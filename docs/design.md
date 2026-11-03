@@ -170,7 +170,7 @@ Pointer samples are 12-byte binary frames (little endian):
 - **Tray icon** in the user's palette colour (grey when offline). Left click toggles the session popup; right click opens the menu:
   show session, point on ▸, what I'm sharing ▸ (monitors / pick a window), pointing frames ▸, hold key ▸, pointer size ▸, show pointers in my screen share,
   open join links with this app, copy code, copy join link, new code, leave session, remove ▸ (owner), quit.
-- **Session popup**: code, copy buttons, join box, member list, name, leave, new code and a usage hint.
+- **Session popup**, centred on the primary monitor: code, copy buttons, join box, member list, name, leave, new code, a usage hint and a Close button. Clicking elsewhere or pressing Esc also closes it.
 - **Single instance** per user, logon session and profile (named mutex). A second launch forwards its join code (or "activate") to the running instance over the local pipe and exits.
 - **Settings** (`%APPDATA%\OneBlindMouse\settings.json`): name, colour preference, hold key, shared monitor, pointer size, show in capture. Crash logs go to the same directory.
 - **Testing options.** `--profile NAME` isolates settings, mutex and pipe so several instances run side by side; `--title-tag TEXT` prefixes window titles.
@@ -184,19 +184,25 @@ Pointer samples are 12-byte binary frames (little endian):
 | Tool | Purpose |
 |---|---|
 | `get_screen_layout` | Monitors (physical bounds, scale), cursor, foreground window client area. Call first to convert screenshot positions |
-| `point_at{x, y, label?, colour?, duration?}` | Labelled pointer at physical pixel coordinates |
-| `show_click{x, y, colour?}` | Click ripple (does not click) |
+| `point_at{x, y, label?, colour?, duration?}` | Glide the agent pointer to physical pixel coordinates and pulse there |
+| `show_click{x, y, label?, colour?, duration?}` | Glide the agent pointer there and play two click ripples, to prompt a click (does not click) |
+| `circle{x, y, width, height, label?, colour?, duration?}` | Glide to the area and draw a hand-drawn ellipse just outside it |
 | `highlight_rect{x, y, width, height, label?, colour?, duration?}` | Outline a rectangle |
 | `trace_path{points[], colour?, duration?}` | Arrow along 2–256 points |
-| `clear` | Remove agent annotations |
+| `clear` | Hide the agent pointer and remove agent annotations |
 | `get_session`, `join_session{code}` | Session code and members; join a session |
 
-Agent annotations are drawn locally in amber by default and are not sent to other members. Durations are 0–600 s (0 = until cleared).
+Agent annotations are drawn locally in amber by default and are not sent to other members. Durations are 0–600 s (0 = until cleared); for the pointer and
+circle they count from arrival. There is a single agent pointer: each `point_at`, `show_click` or `circle` glides it from its current position, or from
+the user's cursor when it is hidden, with an eased motion and a trail, so the user's eye can follow it. A new call cancels any unfinished motion.
 
-Example MCP configuration:
+Example MCP configuration (`~\.copilot\mcp-config.json` for Copilot CLI):
 ```json
-{ "mcpServers": { "one-blind-mouse": { "command": "C:\\Tools\\OneBlindMouse.exe", "args": ["mcp"] } } }
+{ "mcpServers": { "one-blind-mouse": { "type": "local", "command": "C:\\Users\\<user>\\AppData\\Local\\OneBlindMouse\\OneBlindMouse.exe", "args": ["mcp"], "tools": ["*"] } } }
 ```
+
+The MCP server's instructions describe the tools and the coordinate space (physical virtual-desktop pixels). Agent skills that decide when to point, and how
+to obtain and register the tool, are kept outside this repository.
 
 The pipe (`\\.\pipe\OneBlindMouse-<sid>-<session>[-profile]`) accepts JSON lines `{id, cmd, …}` and replies `{id, ok, result | error}`.
 It is created with `CurrentUserOnly`, requests are capped at 64 KB and all arguments are validated (coordinates within the virtual screen, colours `#RRGGBB`, sanitised labels).
@@ -219,8 +225,10 @@ Tools: `get_session` (members, what each shares and its aspect ratio), `point_at
 - macOS and Linux clients (the Core library and protocol are platform-neutral), a browser sender, code signing, optional join approval.
 
 ## 10. Deployment (one-time)
-`./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse [-Location australiaeast]` creates a container registry, Log Analytics, a Container Apps environment and a Static Web App,
-builds the relay image in the registry (`az acr build`, no local Docker), deploys the relay with one replica, uploads `web/`, and prints the relay URL and site hostname.
+`./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse [-Location australiaeast] [-CustomDomain one-blind-mouse.rylogic.co.nz]` creates a container registry, Log Analytics, a Container Apps environment and a Static Web App,
+builds the relay image in the registry (`az acr build`, no local Docker), deploys the relay with one replica, uploads `web/`, and prints the relay URL and site address.
+With `-CustomDomain`, it also adds that domain to the Static Web App, which issues a free certificate. The domain needs a CNAME record pointing at the site's default
+host name (`<name>.azurestaticapps.net`) first. The live site is https://one-blind-mouse.rylogic.co.nz; links on the default host name keep working.
 Compile those into `AppConfig` (`DefaultRelayUrl`, `DefaultWebUrl`) and the site's download link (`web/js/config.js`), then publish the app:
 
 ```powershell

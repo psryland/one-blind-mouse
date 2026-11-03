@@ -38,6 +38,13 @@ internal static unsafe class Monitors
 		return all.FirstOrDefault(m => m.Device == device) ?? all[0];
 	}
 
+	/// <summary>The primary monitor.</summary>
+	public static Monitor Primary()
+	{
+		// The primary monitor's top-left corner is always the virtual screen origin
+		return At(0, 0);
+	}
+
 	/// <summary>The monitor nearest to a screen point.</summary>
 	public static Monitor At(int x, int y)
 	{

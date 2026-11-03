@@ -7,6 +7,8 @@ coloured pointer that the others can see on top of their screens. It is a way to
 
 AI agents can use it too, to show you where to click or where something is on your screen.
 
+Website and download: https://one-blind-mouse.rylogic.co.nz
+
 ## Using it
 
 1. Run `OneBlindMouse.exe` (no install, no sign-in). A popup shows your code, e.g. `K7QM-4PZX`.
@@ -23,11 +25,13 @@ Optional: **Open join links with this app** registers `obm://` links for your us
 
 ## AI agents
 
-`OneBlindMouse.exe mcp` is an MCP server (stdio) that draws pointers, clicks, highlights and arrows on the local screen:
+`OneBlindMouse.exe mcp` is an MCP server (stdio) that glides an agent pointer, prompts clicks, and draws circles, highlights and arrows on the local screen:
 
 ```json
-{ "mcpServers": { "one-blind-mouse": { "command": "C:\\Tools\\OneBlindMouse.exe", "args": ["mcp"] } } }
+{ "mcpServers": { "one-blind-mouse": { "type": "local", "command": "C:\\Users\\<user>\\AppData\\Local\\OneBlindMouse\\OneBlindMouse.exe", "args": ["mcp"], "tools": ["*"] } } }
 ```
+
+The server's built-in instructions tell agents how to use the tools and how to convert screenshot positions into physical screen pixels.
 
 `OneBlindMouse.exe mcp --join CODE --name "My agent"` joins a session as a remote member instead, so an agent on another machine can point on your screen.
 
@@ -77,7 +81,8 @@ $env:OBM_RELAY_URL = "ws://localhost:5199/v1"
 ### Deployment (one-time)
 
 ```powershell
-./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse
+./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse -CustomDomain one-blind-mouse.rylogic.co.nz
 ```
 
-Then put the printed relay URL and site hostname into `src/OneBlindMouse.Windows/AppConfig.cs`, and set the download link in `web/js/config.js`.
+`-CustomDomain` is optional and needs a CNAME record pointing at the site's `*.azurestaticapps.net` host name first.
+Then put the printed relay URL and site address into `src/OneBlindMouse.Windows/AppConfig.cs`, and set the download link in `web/js/config.js`.

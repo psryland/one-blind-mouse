@@ -210,15 +210,17 @@ internal sealed class AgentCommands
 			case "show_click":
 			{
 				var (x, y) = Point(args, "x", "y");
-				m_overlay.AgentClick(x, y, Colour(args));
+				m_overlay.AgentClick(x, y, Label(args), Colour(args), Duration(args));
 				return null;
 			}
 			case "highlight_rect":
 			{
-				var (x, y) = Point(args, "x", "y");
-				var w = Int(args, "width", 1, 32768);
-				var h = Int(args, "height", 1, 32768);
-				m_overlay.AgentHighlight(new RECT(x, y, x + w, y + h), Label(args), Colour(args), Duration(args));
+				m_overlay.AgentHighlight(Rect(args), Label(args), Colour(args), Duration(args));
+				return null;
+			}
+			case "circle":
+			{
+				m_overlay.AgentCircle(Rect(args), Label(args), Colour(args), Duration(args));
 				return null;
 			}
 			case "trace_path":
@@ -337,6 +339,15 @@ internal sealed class AgentCommands
 		var x = Int(args, xname, vs.Left - Margin, vs.Right + Margin);
 		var y = Int(args, yname, vs.Top - Margin, vs.Bottom + Margin);
 		return (x, y);
+	}
+
+	/// <summary>A required screen rectangle from 'x', 'y', 'width' and 'height'.</summary>
+	private static RECT Rect(JsonObject args)
+	{
+		var (x, y) = Point(args, "x", "y");
+		var w = Int(args, "width", 1, 32768);
+		var h = Int(args, "height", 1, 32768);
+		return new RECT(x, y, x + w, y + h);
 	}
 
 	/// <summary>The 'points' array: [[x, y], ...] or [{"x":..,"y":..}, ...].</summary>
