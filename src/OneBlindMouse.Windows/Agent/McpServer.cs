@@ -23,20 +23,26 @@ internal static class McpServer
 	private const string LocalTools = """
 	[
 		{ "name": "get_screen_layout", "description": "Get the monitors (physical pixel bounds and display scale), the cursor position and the foreground window's client area. Call this first to convert screenshot positions into screen coordinates.", "inputSchema": { "type": "object", "properties": {} } },
-		{ "name": "point_at", "description": "Show a labelled pointer on the user's screen at (x, y) in physical screen pixels, to show where something is or where to click.", "inputSchema": { "type": "object", "properties": {
+		{ "name": "point_at", "description": "Glide the agent's labelled pointer to (x, y) in physical screen pixels and pulse there, to show the user where something is. There is one agent pointer; each call moves it from where it was (or from the user's cursor if hidden), so the user's eye can follow it.", "inputSchema": { "type": "object", "properties": {
+			"x": { "type": "number" }, "y": { "type": "number" },
+			"label": { "type": "string", "description": "Short text next to the pointer, e.g. 'Save is here'." },
+			"colour": { "type": "string", "description": "#RRGGBB. Defaults to amber." },
+			"duration": { "type": "number", "description": "Seconds to keep the pointer after it arrives (0 = until cleared). Default 5." } }, "required": ["x", "y"] } },
+		{ "name": "show_click", "description": "Glide the agent's pointer to (x, y) in physical screen pixels and play click ripples there, to prompt the user to click it. Does not click anything.", "inputSchema": { "type": "object", "properties": {
 			"x": { "type": "number" }, "y": { "type": "number" },
 			"label": { "type": "string", "description": "Short text next to the pointer, e.g. 'Click Save'." },
-			"colour": { "type": "string", "description": "#RRGGBB. Defaults to amber." },
-			"duration": { "type": "number", "description": "Seconds to show it (0 = until cleared). Default 5." } }, "required": ["x", "y"] } },
-		{ "name": "show_click", "description": "Play a click ripple at (x, y) in physical screen pixels. Does not click anything.", "inputSchema": { "type": "object", "properties": {
-			"x": { "type": "number" }, "y": { "type": "number" }, "colour": { "type": "string" } }, "required": ["x", "y"] } },
+			"colour": { "type": "string" }, "duration": { "type": "number", "description": "Seconds to keep the pointer after it arrives (0 = until cleared). Default 5." } }, "required": ["x", "y"] } },
+		{ "name": "circle", "description": "Glide the agent's pointer to an area and draw a hand-drawn circle around it, to draw the user's attention to it. Give the bounds of the thing to circle in physical screen pixels; the circle passes just outside them.", "inputSchema": { "type": "object", "properties": {
+			"x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number" }, "height": { "type": "number" },
+			"label": { "type": "string", "description": "Short text above the circle." },
+			"colour": { "type": "string" }, "duration": { "type": "number", "description": "Seconds to keep the circle after it is drawn (0 = until cleared). Default 5." } }, "required": ["x", "y", "width", "height"] } },
 		{ "name": "highlight_rect", "description": "Outline a rectangle on the user's screen (physical pixels), with an optional label.", "inputSchema": { "type": "object", "properties": {
 			"x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number" }, "height": { "type": "number" },
 			"label": { "type": "string" }, "colour": { "type": "string" }, "duration": { "type": "number" } }, "required": ["x", "y", "width", "height"] } },
 		{ "name": "trace_path", "description": "Draw an arrow along a path of points (physical pixels), e.g. to show a drag or the order of steps.", "inputSchema": { "type": "object", "properties": {
 			"points": { "type": "array", "items": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 }, "minItems": 2, "maxItems": 256 },
 			"colour": { "type": "string" }, "duration": { "type": "number" } }, "required": ["points"] } },
-		{ "name": "clear", "description": "Remove all annotations made by agents.", "inputSchema": { "type": "object", "properties": {} } },
+		{ "name": "clear", "description": "Hide the agent's pointer and remove all annotations made by agents.", "inputSchema": { "type": "object", "properties": {} } },
 		{ "name": "get_session", "description": "Get this user's One-Blind-Mouse session code and the people in it.", "inputSchema": { "type": "object", "properties": {} } },
 		{ "name": "join_session", "description": "Join another One-Blind-Mouse session using a code the user gave you.", "inputSchema": { "type": "object", "properties": {
 			"code": { "type": "string" } }, "required": ["code"] } }
@@ -236,7 +242,7 @@ internal static class McpServer
 	{
 		private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
-		public string Instructions => "Draws pointers and highlights on this user's screen, to show them where things are. It never clicks or types. Coordinates are physical screen pixels; call get_screen_layout first.";
+		public string Instructions => "Draws a gliding agent pointer, click prompts, circles and highlights on this user's screen, to direct their attention. It never clicks or types. Coordinates are physical screen pixels; call get_screen_layout first. Call clear when the annotations are no longer needed.";
 
 		public string Tools => LocalTools;
 
@@ -247,7 +253,7 @@ internal static class McpServer
 			var cmd = tool switch
 			{
 				"join_session" => "join",
-				"get_screen_layout" or "point_at" or "show_click" or "highlight_rect" or "trace_path" or "clear" or "get_session" => tool,
+				"get_screen_layout" or "point_at" or "show_click" or "highlight_rect" or "circle" or "trace_path" or "clear" or "get_session" => tool,
 				_ => throw new AgentError($"Unknown tool '{Names.Sanitise(tool, 32)}'"),
 			};
 			await EnsureAppAsync().ConfigureAwait(false);

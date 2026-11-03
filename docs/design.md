@@ -184,19 +184,25 @@ Pointer samples are 12-byte binary frames (little endian):
 | Tool | Purpose |
 |---|---|
 | `get_screen_layout` | Monitors (physical bounds, scale), cursor, foreground window client area. Call first to convert screenshot positions |
-| `point_at{x, y, label?, colour?, duration?}` | Labelled pointer at physical pixel coordinates |
-| `show_click{x, y, colour?}` | Click ripple (does not click) |
+| `point_at{x, y, label?, colour?, duration?}` | Glide the agent pointer to physical pixel coordinates and pulse there |
+| `show_click{x, y, label?, colour?, duration?}` | Glide the agent pointer there and play two click ripples, to prompt a click (does not click) |
+| `circle{x, y, width, height, label?, colour?, duration?}` | Glide to the area and draw a hand-drawn ellipse just outside it |
 | `highlight_rect{x, y, width, height, label?, colour?, duration?}` | Outline a rectangle |
 | `trace_path{points[], colour?, duration?}` | Arrow along 2–256 points |
-| `clear` | Remove agent annotations |
+| `clear` | Hide the agent pointer and remove agent annotations |
 | `get_session`, `join_session{code}` | Session code and members; join a session |
 
-Agent annotations are drawn locally in amber by default and are not sent to other members. Durations are 0–600 s (0 = until cleared).
+Agent annotations are drawn locally in amber by default and are not sent to other members. Durations are 0–600 s (0 = until cleared); for the pointer and
+circle they count from arrival. There is a single agent pointer: each `point_at`, `show_click` or `circle` glides it from its current position, or from
+the user's cursor when it is hidden, with an eased motion and a trail, so the user's eye can follow it. A new call cancels any unfinished motion.
 
-Example MCP configuration:
+Example MCP configuration (`~\.copilot\mcp-config.json` for Copilot CLI):
 ```json
-{ "mcpServers": { "one-blind-mouse": { "command": "C:\\Tools\\OneBlindMouse.exe", "args": ["mcp"] } } }
+{ "mcpServers": { "one-blind-mouse": { "type": "local", "command": "C:\\Users\\<user>\\AppData\\Local\\OneBlindMouse\\OneBlindMouse.exe", "args": ["mcp"], "tools": ["*"] } } }
 ```
+
+The agent skill in `skills/one-blind-mouse` teaches an agent when and how to point, how to convert screenshot or UI automation positions into physical
+pixels, and how to obtain and register the tool. `skills/one-blind-mouse/scripts/obm.ps1` calls a single tool from the shell when the MCP server is not loaded.
 
 The pipe (`\\.\pipe\OneBlindMouse-<sid>-<session>[-profile]`) accepts JSON lines `{id, cmd, …}` and replies `{id, ok, result | error}`.
 It is created with `CurrentUserOnly`, requests are capped at 64 KB and all arguments are validated (coordinates within the virtual screen, colours `#RRGGBB`, sanitised labels).

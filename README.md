@@ -23,11 +23,13 @@ Optional: **Open join links with this app** registers `obm://` links for your us
 
 ## AI agents
 
-`OneBlindMouse.exe mcp` is an MCP server (stdio) that draws pointers, clicks, highlights and arrows on the local screen:
+`OneBlindMouse.exe mcp` is an MCP server (stdio) that glides an agent pointer, prompts clicks, and draws circles, highlights and arrows on the local screen:
 
 ```json
-{ "mcpServers": { "one-blind-mouse": { "command": "C:\\Tools\\OneBlindMouse.exe", "args": ["mcp"] } } }
+{ "mcpServers": { "one-blind-mouse": { "type": "local", "command": "C:\\Users\\<user>\\AppData\\Local\\OneBlindMouse\\OneBlindMouse.exe", "args": ["mcp"], "tools": ["*"] } } }
 ```
+
+For Copilot CLI, register the agent skill too, so the agent knows when to point and how to get coordinates right: `copilot skill add <repo>\skills\one-blind-mouse`.
 
 `OneBlindMouse.exe mcp --join CODE --name "My agent"` joins a session as a remote member instead, so an agent on another machine can point on your screen.
 
@@ -46,6 +48,7 @@ See [docs/design.md](docs/design.md) for the full design.
 | `src/OneBlindMouse.Core` | Protocol, session codes, relay client (platform-neutral) |
 | `src/OneBlindMouse.Relay` | WebSocket relay (ASP.NET Core) |
 | `src/OneBlindMouse.Windows` | Tray app and MCP server (NativeAOT, Win32) |
+| `skills/one-blind-mouse` | Agent skill for pointing things out with the MCP server |
 | `tests/OneBlindMouse.Tests` | Unit and end-to-end tests |
 | `infra/` | Azure Bicep and deployment script |
 | `web/` | Landing and join pages (Static Web App) |

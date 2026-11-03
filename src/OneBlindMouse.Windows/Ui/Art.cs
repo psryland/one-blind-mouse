@@ -135,9 +135,8 @@ internal static class Art
 	/// <summary>Draw a path with a start dot and an arrowhead at the end. 'points' are in canvas coordinates.</summary>
 	public static void DrawPath(Canvas canvas, ReadOnlySpan<PointF> points, uint rgb, float scale)
 	{
-		// A dark underlay keeps the line visible on light and dark backgrounds
-		canvas.DrawLines(points, 0x60000000, 7 * scale);
-		canvas.DrawLines(points, 0xFF000000 | rgb, 4 * scale);
+		// The line, then a dot marking where the path starts
+		DrawStroke(canvas, points, rgb, scale);
 		canvas.FillCircle(points[0].X, points[0].Y, 5 * scale, 0xFF000000 | rgb);
 
 		// Arrowhead pointing along the last segment
@@ -154,6 +153,52 @@ internal static class Art
 		var size = 14 * scale;
 		Span<PointF> head = [end, new(end.X - dx * size - dy * size * 0.6f, end.Y - dy * size + dx * size * 0.6f), new(end.X - dx * size + dy * size * 0.6f, end.Y - dy * size - dx * size * 0.6f)];
 		canvas.FillPolygon(head, 0xFF000000 | rgb);
+	}
+
+	/// <summary>Draw a thick line through 'points' (canvas coordinates, at least two).</summary>
+	public static void DrawStroke(Canvas canvas, ReadOnlySpan<PointF> points, uint rgb, float scale)
+	{
+		// A dark underlay keeps the line visible on light and dark backgrounds
+		canvas.DrawLines(points, 0x60000000, 7 * scale);
+		canvas.DrawLines(points, 0xFF000000 | rgb, 4 * scale);
+	}
+
+	/// <summary>
+	/// Points on a hand-drawn looking ellipse around (cx, cy) with radii (rx, ry), in the same coordinates as the centre.
+	/// The loop starts at the upper left, goes clockwise and runs a little past its start, ending slightly wider, like a circle drawn by hand.
+	/// </summary>
+	public static PointF[] CirclePath(float cx, float cy, float rx, float ry)
+	{
+		// Enough points that the ellipse looks smooth at any size the screen can hold
+		const int count = 96;
+		const float start = -2.2f;
+		const float turns = 1.12f;
+		var points = new PointF[count];
+		for (var i = 0; i != count; ++i)
+		{
+			var f = i / (float)(count - 1);
+			var angle = start + f * turns * 2 * MathF.PI;
+			var grow = 1 + 0.07f * f;
+			points[i] = new PointF(cx + rx * grow * MathF.Cos(angle), cy + ry * grow * MathF.Sin(angle));
+		}
+		return points;
+	}
+
+	/// <summary>The size of a label pill drawn by <see cref="DrawLabel"/>. Empty labels have no size.</summary>
+	public static SizeF LabelSize(string label, float scale)
+	{
+		if (label.Length == 0)
+			return new SizeF(0, 0);
+
+		var (pill, _) = LabelPill(label, scale);
+		return new SizeF(pill.Width, pill.Height);
+	}
+
+	/// <summary>Draw a label pill with its top-left corner at (x, y). Empty labels draw nothing.</summary>
+	public static void DrawLabel(Canvas canvas, string label, float x, float y, uint rgb, float scale)
+	{
+		var (pill, font) = LabelPill(label, scale);
+		DrawPill(canvas, label, font, new RectF(x, y, pill.Width, pill.Height), rgb, scale);
 	}
 
 	/// <summary>Padding to leave around a path's bounding box.</summary>
