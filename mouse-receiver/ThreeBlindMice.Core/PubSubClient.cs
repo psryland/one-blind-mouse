@@ -45,16 +45,8 @@ public class PubSubClient : IDisposable
 
 		var message_json = MessageParser.Serialize(message);
 
-		// Embed the serialized message as a proper JSON object inside the PubSub envelope
-		using var message_doc = JsonDocument.Parse(message_json);
-		var envelope = JsonSerializer.Serialize(new
-		{
-			type = "sendToGroup",
-			group = m_session_code,
-			noEcho = true,
-			dataType = "json",
-			data = message_doc.RootElement,
-		});
+		// Build the PubSub envelope manually to avoid anonymous-type serialization (NativeAOT)
+		var envelope = $"{{\"type\":\"sendToGroup\",\"group\":\"{Escape_Json(m_session_code)}\",\"noEcho\":true,\"dataType\":\"json\",\"data\":{message_json}}}";
 
 		var bytes = Encoding.UTF8.GetBytes(envelope);
 		var ct = m_cts?.Token ?? CancellationToken.None;
@@ -153,15 +145,15 @@ public class PubSubClient : IDisposable
 
 	private async Task Join_Group(string group, CancellationToken ct)
 	{
-		// Send a joinGroup message per the Web PubSub json subprotocol
-		var join_msg = JsonSerializer.Serialize(new
-		{
-			type = "joinGroup",
-			group = group,
-		});
+		var join_msg = $"{{\"type\":\"joinGroup\",\"group\":\"{Escape_Json(group)}\"}}";
 
 		var bytes = Encoding.UTF8.GetBytes(join_msg);
 		await m_ws!.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct);
+	}
+
+	private static string Escape_Json(string value)
+	{
+		return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 	}
 
 	private async Task Receive_Loop(CancellationToken ct)

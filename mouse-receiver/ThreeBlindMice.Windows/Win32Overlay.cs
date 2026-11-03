@@ -22,6 +22,7 @@ internal sealed class Win32Overlay : IDisposable
 
 	private const int SW_SHOW = 5;
 	private const uint LWA_COLORKEY = 0x00000001;
+	private const uint LWA_ALPHA = 0x00000002;
 	private const uint WM_DESTROY = 0x0002;
 	private const uint WM_PAINT = 0x000F;
 	private const uint WM_ERASEBKGND = 0x0014;
@@ -168,8 +169,8 @@ internal sealed class Win32Overlay : IDisposable
 		if (m_hwnd == IntPtr.Zero)
 			throw new InvalidOperationException($"CreateWindowEx failed: {Marshal.GetLastWin32Error()}");
 
-		// Key out the magenta background so only drawn content is visible
-		SetLayeredWindowAttributes(m_hwnd, ColorKeyRgb, 0, LWA_COLORKEY);
+		// Key out the magenta background, and apply global alpha for a subtle frosted look
+		SetLayeredWindowAttributes(m_hwnd, ColorKeyRgb, 230, LWA_COLORKEY | LWA_ALPHA);
 
 		ShowWindow(m_hwnd, SW_SHOW);
 		UpdateWindow(m_hwnd);

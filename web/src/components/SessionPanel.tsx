@@ -21,7 +21,8 @@ type SessionPanelProps = LandingProps | ActiveProps;
 
 export default function SessionPanel(props: SessionPanelProps) {
 	const [join_input, set_join_input] = useState('');
-	const [copy_label, set_copy_label] = useState('Copy Link');
+	const [code_icon, set_code_icon] = useState('📋');
+	const [link_icon, set_link_icon] = useState('🔗');
 
 	// Auto-join from ?session= query parameter on mount (only in landing mode)
 	const on_join_ref = props.mode === 'landing' ? props.on_join : undefined;
@@ -47,24 +48,33 @@ export default function SessionPanel(props: SessionPanelProps) {
 	if (props.mode === 'active') {
 		const shareable_url = `https://three-blind-mice.rylogic.co.nz?session=${props.session_code}`;
 
+		const handle_copy_code = async () => {
+			try {
+				await navigator.clipboard.writeText(props.session_code);
+				set_code_icon('✅');
+				setTimeout(() => set_code_icon('📋'), 1500);
+			} catch { /* ignore */ }
+		};
+
 		const handle_copy_link = async () => {
 			try {
 				await navigator.clipboard.writeText(shareable_url);
-				set_copy_label('Copied!');
-				setTimeout(() => set_copy_label('Copy Link'), 2000);
-			} catch {
-				set_copy_label('Failed');
-				setTimeout(() => set_copy_label('Copy Link'), 2000);
-			}
+				set_link_icon('✅');
+				setTimeout(() => set_link_icon('🔗'), 1500);
+			} catch { /* ignore */ }
 		};
 
 		return (
 			<div className="session-panel">
 				<div className="session-active">
-					<h2>Session: <span className="session-code">{props.session_code}</span></h2>
+					<div className="session-code-row">
+						<span className="session-code-label">Session Code:</span>
+						<span className="session-code">{props.session_code}</span>
+						<button className="copy-icon-btn" onClick={handle_copy_code} title="Copy session code">{code_icon}</button>
+					</div>
 					<div className="shareable-url">
-						<input type="text" readOnly value={shareable_url} />
-						<button className="btn-primary" onClick={handle_copy_link}>{copy_label}</button>
+						<input type="text" readOnly value={shareable_url} onClick={(e) => (e.target as HTMLInputElement).select()} />
+						<button className="copy-icon-btn" onClick={handle_copy_link} title="Copy link">{link_icon}</button>
 					</div>
 					<button className="leave-btn" onClick={props.on_leave}>Leave Session</button>
 				</div>

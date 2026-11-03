@@ -105,8 +105,14 @@ export default function MouseCanvas({
 
 		if (is_locked) {
 			const acc = accum_ref.current;
-			acc.x = Math.max(0, Math.min(1, acc.x + e.movementX / (canvas_size.width * z)));
-			acc.y = Math.max(0, Math.min(1, acc.y + e.movementY / (canvas_size.height * z)));
+
+			// Clamp movement deltas to prevent huge jumps (RDP, cursor warps, etc.)
+			const max_delta = 80;
+			const dx = Math.max(-max_delta, Math.min(max_delta, e.movementX));
+			const dy = Math.max(-max_delta, Math.min(max_delta, e.movementY));
+
+			acc.x = Math.max(0, Math.min(1, acc.x + dx / (canvas_size.width * z)));
+			acc.y = Math.max(0, Math.min(1, acc.y + dy / (canvas_size.height * z)));
 			nx = acc.x;
 			ny = acc.y;
 		} else {
@@ -152,8 +158,8 @@ export default function MouseCanvas({
 		? 'Esc or right-click to release · Scroll to zoom'
 		: 'Click to lock cursor';
 
-	// Grid cell size scales with zoom: at 1x = 10% cells, at 2x = 20% cells, etc.
-	const grid_pct = 10 * zoom_level;
+	// Grid cell size scales with zoom: at 1x = 2% cells (50 lines), at 2x = 4% cells, etc.
+	const grid_pct = 2 * zoom_level;
 	const grid_style = {
 		backgroundSize: `${grid_pct}% ${grid_pct}%`,
 	};

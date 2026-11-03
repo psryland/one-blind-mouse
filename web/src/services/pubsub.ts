@@ -90,6 +90,14 @@ export interface HostPickRectangleMessage {
 	type: 'host_pick_rectangle';
 }
 
+export interface HostHeartbeatMessage {
+	type: 'host_heartbeat';
+}
+
+export interface HostEndMessage {
+	type: 'host_end';
+}
+
 export interface HostRectanglePickedMessage {
 	type: 'host_rectangle_picked';
 	left: number;
@@ -101,7 +109,7 @@ export interface HostRectanglePickedMessage {
 export type PubSubMessage = CursorMessage | JoinMessage | LeaveMessage | HostConfigMessage | HostInfoMessage | HostThumbnailMessage | HostConstraintMessage | HostWindowPickedMessage | HostRectanglePickedMessage;
 
 // Outbound-only messages (web → host) that aren't expected as inbound
-type OutboundMessage = PubSubMessage | HostPickWindowMessage | HostPickRectangleMessage;
+type OutboundMessage = PubSubMessage | HostPickWindowMessage | HostPickRectangleMessage | HostHeartbeatMessage | HostEndMessage;
 
 // --- Azure Web PubSub JSON subprotocol envelope types ---
 
@@ -190,6 +198,13 @@ export class PubSubClient {
 	}
 
 	/**
+	 * Update the display name for future messages.
+	 */
+	set_name(name: string): void {
+		this.m_name = name;
+	}
+
+	/**
 	 * Send a cursor position update to the session group, throttled to ~20fps.
 	 */
 	send_cursor(x: number, y: number, button: number): void {
@@ -245,6 +260,20 @@ export class PubSubClient {
 	 */
 	send_host_pick_rectangle(): void {
 		this.Send_To_Group({ type: 'host_pick_rectangle' } as HostPickRectangleMessage);
+	}
+
+	/**
+	 * Periodic heartbeat so the host app knows the session is alive.
+	 */
+	send_host_heartbeat(): void {
+		this.Send_To_Group({ type: 'host_heartbeat' } as HostHeartbeatMessage);
+	}
+
+	/**
+	 * Tell the host app the session has ended.
+	 */
+	send_host_end(): void {
+		this.Send_To_Group({ type: 'host_end' } as HostEndMessage);
 	}
 
 	/**

@@ -56,6 +56,22 @@ function App() {
 	const user_colour = useMemo(() => CURSOR_COLOURS[Math.floor(Math.random() * CURSOR_COLOURS.length)], []);
 
 	const client_ref = useRef<PubSubClient | null>(null);
+	const heartbeat_ref = useRef<ReturnType<typeof setInterval> | null>(null);
+
+	// Host heartbeat — lets the host app detect when the session ends
+	useEffect(() => {
+		if (is_host && connected && client_ref.current) {
+			heartbeat_ref.current = setInterval(() => {
+				client_ref.current?.send_host_heartbeat();
+			}, 10_000);
+		}
+		return () => {
+			if (heartbeat_ref.current) {
+				clearInterval(heartbeat_ref.current);
+				heartbeat_ref.current = null;
+			}
+		};
+	}, [is_host, connected]);
 
 	// Persist name to localStorage when it changes
 	useEffect(() => {
@@ -128,8 +144,20 @@ function App() {
 		client.on_connection_change((is_connected) => set_connected(is_connected));
 		client.connect(code, user_id, user_name, user_colour);
 
-		// Trigger the host app via protocol handler
-		window.location.href = `tbm://session/${code}`;
+		// Download host app with session code embedded in the filename
+		fetch('/downloads/ThreeBlindMice.Windows.exe')
+			.then(r => r.blob())
+			.then(blob => {
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = `ThreeBlindMice.Windows.${code}.exe`;
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+				URL.revokeObjectURL(url);
+			})
+			.catch(() => { /* download failed — user can use the manual download button */ });
 	}, [user_id, user_name, user_colour, handle_message]);
 
 	const handle_join = useCallback((code: string) => {
@@ -146,6 +174,8 @@ function App() {
 	}, [user_id, user_name, user_colour, handle_message]);
 
 	const handle_leave = useCallback(() => {
+		// Tell the host app the session is over
+		if (is_host) client_ref.current?.send_host_end();
 		client_ref.current?.disconnect();
 		client_ref.current = null;
 		set_session_code(null);
@@ -159,7 +189,7 @@ function App() {
 
 		// Clear ?session= from URL so auto-join doesn't re-trigger on landing
 		window.history.replaceState({}, '', window.location.pathname);
-	}, []);
+	}, [is_host]);
 
 	const handle_cursor_move = useCallback((x: number, y: number, button: number) => {
 		client_ref.current?.send_cursor(x, y, button);
@@ -180,6 +210,13 @@ function App() {
 		set_picked_rectangle(null);
 		client_ref.current?.send_host_pick_rectangle();
 	}, []);
+
+	// Handle name change during an active session
+	const handle_name_change_in_session = useCallback((name: string) => {
+		set_user_name(name);
+		set_users((prev) => prev.map((u) => u.user_id === user_id ? { ...u, name } : u));
+		client_ref.current?.set_name(name);
+	}, [user_id]);
 
 	// Clean up on unmount
 	useEffect(() => {
@@ -234,10 +271,10 @@ function App() {
 								<h2>Waiting for Host App…</h2>
 								<div className="host-waiting-code">{session_code}</div>
 								<p className="host-waiting-hint">
-									The overlay app should launch automatically.
-									If it didn't, download and run it below.
+									Run the downloaded host app to connect.
+									If the download didn't start, use the button below.
 								</p>
-								<DownloadPanel />
+								<DownloadPanel session_code={session_code} />
 							</div>
 						)}
 
@@ -283,7 +320,7 @@ function App() {
 						/>
 
 						{session_code && (
-							<UserList users={users} current_user_id={user_id} />
+							<UserList users={users} current_user_id={user_id} on_name_change={handle_name_change_in_session} />
 						)}
 					</div>
 				</div>

@@ -130,28 +130,41 @@ internal sealed class CursorRenderer : IDisposable
 		// Position label to the right of and slightly below the arrow tip
 		var label_x = cx + 18;
 		var label_y = cy + 4;
-		const int padding = 3;
+		const int padding = 4;
+		const int accent_width = 3;
 
 		// Approximate text metrics (width ≈ 7px per char, height ≈ 16px)
 		var text_width = name.Length * 7;
 		const int text_height = 16;
 
-		// Draw filled background rectangle in the user's colour
-		var label_rect = new RECT
+		// Dark background for readability on any desktop
+		var bg_rect = new RECT
 		{
 			left = label_x - padding,
 			top = label_y - padding,
-			right = label_x + text_width + padding,
+			right = label_x + text_width + padding + accent_width,
 			bottom = label_y + text_height + padding,
 		};
-		var label_brush = CreateSolidBrush(colour_ref);
-		FillRect(hdc, ref label_rect, label_brush);
-		DeleteObject(label_brush);
+		var bg_brush = CreateSolidBrush(0x00282828); // dark charcoal (COLORREF 0x00BBGGRR)
+		FillRect(hdc, ref bg_rect, bg_brush);
+		DeleteObject(bg_brush);
 
-		// Draw the name in white on transparent background
+		// Coloured left accent bar
+		var accent_rect = new RECT
+		{
+			left = label_x - padding,
+			top = label_y - padding,
+			right = label_x - padding + accent_width,
+			bottom = label_y + text_height + padding,
+		};
+		var accent_brush = CreateSolidBrush(colour_ref);
+		FillRect(hdc, ref accent_rect, accent_brush);
+		DeleteObject(accent_brush);
+
+		// Draw the name in white
 		SetTextColor(hdc, 0x00FFFFFF);
 		SetBkMode(hdc, TRANSPARENT);
-		TextOut(hdc, label_x, label_y, name, name.Length);
+		TextOut(hdc, label_x + accent_width, label_y, name, name.Length);
 	}
 
 	/// <summary>

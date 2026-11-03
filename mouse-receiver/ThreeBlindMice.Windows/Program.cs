@@ -14,23 +14,38 @@ class Program
 	{
 		Console.WriteLine("Three Blind Mice — Windows Mouse Receiver");
 
+		// Parse session code first (may rename the exe if session code is in the filename)
 		var session_code = ParseSessionCode(args);
+
+		// Register the tbm:// protocol handler and .tbm file association
+		// (done after ParseSessionCode so the registered path uses the clean exe name)
+		if (!ProtocolRegistrar.Is_Registered())
+		{
+			ProtocolRegistrar.Register();
+			Console.WriteLine("Registered tbm:// protocol handler and .tbm file association.");
+		}
+
 		if (session_code == null)
 		{
+			// No session code — prompt the user
+			Console.Write("Enter session code: ");
+			var input = Console.ReadLine()?.Trim();
+			if (input != null && TbmUriParser.IsValidSessionCode(input))
+				session_code = input;
+		}
+
+		if (session_code == null)
+		{
+			Console.Error.WriteLine("No valid session code provided.");
 			Console.Error.WriteLine("Usage:");
 			Console.Error.WriteLine("  ThreeBlindMice.Windows tbm://session/<code>");
 			Console.Error.WriteLine("  ThreeBlindMice.Windows --session <code>");
+			Console.Error.WriteLine("  ThreeBlindMice.Windows.XXXXXX.exe  (session code in filename)");
 			Environment.Exit(1);
 			return;
 		}
 
 		Console.WriteLine($"Session code: {session_code}");
-
-		if (!ProtocolRegistrar.Is_Registered())
-		{
-			ProtocolRegistrar.Register();
-			Console.WriteLine("Registered tbm:// protocol handler.");
-		}
 
 		// Enumerate monitors
 		var monitors = MonitorEnumerator.Enumerate();
@@ -79,6 +94,9 @@ class Program
 		Console.WriteLine($"Enumerated {windows.Count} window(s).");
 
 		using var pubsub = new PubSubClient();
+		long last_heartbeat = Environment.TickCount64;
+		var heartbeat_received = false;
+
 		pubsub.On_Message += msg =>
 		{
 			switch (msg)
@@ -98,6 +116,17 @@ class Program
 
 				case HostConstraintMessage constraint_msg:
 					Apply_Constraint(constraint_msg, monitors, windows, overlay);
+					break;
+
+				case HostHeartbeatMessage:
+					Interlocked.Exchange(ref last_heartbeat, Environment.TickCount64);
+					heartbeat_received = true;
+					break;
+
+				case HostEndMessage:
+					Console.WriteLine("Session ended by host.");
+					overlay.Shutdown();
+					exit.Set();
 					break;
 
 				case HostPickWindowMessage:
@@ -210,6 +239,23 @@ class Program
 		};
 
 		Console.WriteLine("Running. Right-click tray icon or press Ctrl+C to exit.");
+
+		// Watchdog: shut down if no heartbeat from the web host for 30 seconds
+		_ = Task.Run(async () =>
+		{
+			while (!exit.IsSet)
+			{
+				await Task.Delay(5000);
+				if (heartbeat_received && Environment.TickCount64 - Interlocked.Read(ref last_heartbeat) > 30_000)
+				{
+					Console.WriteLine("No heartbeat for 30 seconds, shutting down.");
+					overlay.Shutdown();
+					exit.Set();
+					break;
+				}
+			}
+		});
+
 		exit.Wait();
 
 		Stop_Window_Tracking();
@@ -310,12 +356,47 @@ class Program
 
 	private static string? ParseSessionCode(string[] args)
 	{
+		// Check exe filename for embedded session code: ThreeBlindMice.Windows.XXXXXX.exe
+		var exe_path = Environment.ProcessPath;
+		if (exe_path != null)
+		{
+			var filename = Path.GetFileNameWithoutExtension(exe_path);
+			var parts = filename.Split('.');
+			if (parts.Length >= 3 && TbmUriParser.IsValidSessionCode(parts[^1]))
+			{
+				var code = parts[^1];
+
+				// Rename to remove session code so the clean exe is used for future protocol launches
+				var dir = Path.GetDirectoryName(exe_path)!;
+				var clean_name = string.Join('.', parts[..^1]) + Path.GetExtension(exe_path);
+				var clean_path = Path.Combine(dir, clean_name);
+				try
+				{
+					if (clean_path != exe_path)
+					{
+						if (File.Exists(clean_path))
+							File.Delete(clean_path);
+						File.Move(exe_path, clean_path);
+						Console.WriteLine($"Renamed to {clean_name}");
+					}
+				}
+				catch (Exception ex)
+				{
+					Console.WriteLine($"Could not rename: {ex.Message}");
+				}
+
+				return code;
+			}
+		}
+
 		if (args.Length == 0)
 			return null;
 
+		// tbm:// protocol handler
 		if (args[0].StartsWith("tbm://", StringComparison.OrdinalIgnoreCase))
 			return TbmUriParser.TryParseSessionCode(args[0]);
 
+		// --session flag
 		for (var i = 0; i < args.Length - 1; i++)
 		{
 			if (args[i] == "--session")

@@ -206,6 +206,20 @@ public class HostPickRectangleMessage : Message
 	public override string Type => "host_pick_rectangle";
 }
 
+// Web → Host: periodic heartbeat so the host app knows the session is still alive
+public class HostHeartbeatMessage : Message
+{
+	[JsonPropertyName("type")]
+	public override string Type => "host_heartbeat";
+}
+
+// Web → Host: the host user has ended the session
+public class HostEndMessage : Message
+{
+	[JsonPropertyName("type")]
+	public override string Type => "host_end";
+}
+
 // Host → Web: result of a rectangle selection
 public class HostRectanglePickedMessage : Message
 {
@@ -227,13 +241,6 @@ public class HostRectanglePickedMessage : Message
 
 public static class MessageParser
 {
-	private static readonly JsonSerializerOptions s_options = new()
-	{
-		PropertyNameCaseInsensitive = true,
-		NumberHandling = JsonNumberHandling.Strict,
-		MaxDepth = 5,
-	};
-
 	public static Message? Parse(string json)
 	{
 		// Parse to get the type field first
@@ -244,21 +251,63 @@ public static class MessageParser
 		var type = type_element.GetString();
 		return type switch
 		{
-			"cursor" => JsonSerializer.Deserialize<CursorMessage>(json, s_options),
-			"join" => JsonSerializer.Deserialize<JoinMessage>(json, s_options),
-			"leave" => JsonSerializer.Deserialize<LeaveMessage>(json, s_options),
-			"host_config" => JsonSerializer.Deserialize<HostConfigMessage>(json, s_options),
-			"host_info" => JsonSerializer.Deserialize<HostInfoMessage>(json, s_options),
-			"host_thumbnail" => JsonSerializer.Deserialize<HostThumbnailMessage>(json, s_options),
-			"host_pick_window" => JsonSerializer.Deserialize<HostPickWindowMessage>(json, s_options),
-			"host_pick_rectangle" => JsonSerializer.Deserialize<HostPickRectangleMessage>(json, s_options),
-			"host_constraint" => JsonSerializer.Deserialize<HostConstraintMessage>(json, s_options),
+			"cursor" => JsonSerializer.Deserialize(json, TbmJsonContext.Default.CursorMessage),
+			"join" => JsonSerializer.Deserialize(json, TbmJsonContext.Default.JoinMessage),
+			"leave" => JsonSerializer.Deserialize(json, TbmJsonContext.Default.LeaveMessage),
+			"host_config" => JsonSerializer.Deserialize(json, TbmJsonContext.Default.HostConfigMessage),
+			"host_info" => JsonSerializer.Deserialize(json, TbmJsonContext.Default.HostInfoMessage),
+			"host_thumbnail" => JsonSerializer.Deserialize(json, TbmJsonContext.Default.HostThumbnailMessage),
+			"host_pick_window" => JsonSerializer.Deserialize(json, TbmJsonContext.Default.HostPickWindowMessage),
+			"host_pick_rectangle" => JsonSerializer.Deserialize(json, TbmJsonContext.Default.HostPickRectangleMessage),
+			"host_constraint" => JsonSerializer.Deserialize(json, TbmJsonContext.Default.HostConstraintMessage),
+			"host_heartbeat" => new HostHeartbeatMessage(),
+			"host_end" => new HostEndMessage(),
 			_ => null,
 		};
 	}
 
 	public static string Serialize(Message message)
 	{
-		return JsonSerializer.Serialize(message, message.GetType(), s_options);
+		return message switch
+		{
+			CursorMessage m => JsonSerializer.Serialize(m, TbmJsonContext.Default.CursorMessage),
+			JoinMessage m => JsonSerializer.Serialize(m, TbmJsonContext.Default.JoinMessage),
+			LeaveMessage m => JsonSerializer.Serialize(m, TbmJsonContext.Default.LeaveMessage),
+			HostConfigMessage m => JsonSerializer.Serialize(m, TbmJsonContext.Default.HostConfigMessage),
+			HostInfoMessage m => JsonSerializer.Serialize(m, TbmJsonContext.Default.HostInfoMessage),
+			HostThumbnailMessage m => JsonSerializer.Serialize(m, TbmJsonContext.Default.HostThumbnailMessage),
+			HostWindowPickedMessage m => JsonSerializer.Serialize(m, TbmJsonContext.Default.HostWindowPickedMessage),
+			HostRectanglePickedMessage m => JsonSerializer.Serialize(m, TbmJsonContext.Default.HostRectanglePickedMessage),
+			HostConstraintMessage m => JsonSerializer.Serialize(m, TbmJsonContext.Default.HostConstraintMessage),
+			HostHeartbeatMessage m => JsonSerializer.Serialize(m, TbmJsonContext.Default.HostHeartbeatMessage),
+			HostEndMessage m => JsonSerializer.Serialize(m, TbmJsonContext.Default.HostEndMessage),
+			_ => JsonSerializer.Serialize(message, TbmJsonContext.Default.Message),
+		};
 	}
+}
+
+// Source-generated JSON context for NativeAOT compatibility
+[JsonSerializable(typeof(CursorMessage))]
+[JsonSerializable(typeof(JoinMessage))]
+[JsonSerializable(typeof(LeaveMessage))]
+[JsonSerializable(typeof(HostConfigMessage))]
+[JsonSerializable(typeof(MonitorData))]
+[JsonSerializable(typeof(WindowData))]
+[JsonSerializable(typeof(HostInfoMessage))]
+[JsonSerializable(typeof(HostThumbnailMessage))]
+[JsonSerializable(typeof(HostPickWindowMessage))]
+[JsonSerializable(typeof(HostWindowPickedMessage))]
+[JsonSerializable(typeof(HostPickRectangleMessage))]
+[JsonSerializable(typeof(HostRectanglePickedMessage))]
+[JsonSerializable(typeof(HostConstraintMessage))]
+[JsonSerializable(typeof(HostHeartbeatMessage))]
+[JsonSerializable(typeof(HostEndMessage))]
+[JsonSerializable(typeof(Message))]
+[JsonSourceGenerationOptions(
+	PropertyNameCaseInsensitive = true,
+	NumberHandling = JsonNumberHandling.Strict,
+	DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+)]
+internal partial class TbmJsonContext : JsonSerializerContext
+{
 }

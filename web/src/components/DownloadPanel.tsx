@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import './DownloadPanel.css';
 
 interface DownloadInfo {
@@ -11,7 +11,7 @@ const DOWNLOADS: DownloadInfo[] = [
 	{
 		platform: 'win',
 		label: 'Windows (x64)',
-		filename: 'three-blind-mice-win-x64.zip',
+		filename: 'ThreeBlindMice.Windows.exe',
 	},
 	{
 		platform: 'linux',
@@ -27,12 +27,46 @@ function Detect_Platform(): string {
 	return 'win';
 }
 
-export default function DownloadPanel() {
+interface DownloadPanelProps {
+	session_code?: string;
+}
+
+export default function DownloadPanel({ session_code }: DownloadPanelProps) {
 	const [detected_platform] = useState(Detect_Platform);
 	const [show_all, set_show_all] = useState(false);
 
 	const primary = DOWNLOADS.find((d) => d.platform === detected_platform) ?? DOWNLOADS[0];
 	const others = DOWNLOADS.filter((d) => d.platform !== detected_platform);
+
+	// Downloads the exe with the session code embedded in the filename
+	const handle_download = useCallback((d: DownloadInfo) => {
+		if (session_code && d.filename.endsWith('.exe')) {
+			// Fetch as blob so we can rename the download
+			const ext = d.filename.substring(d.filename.lastIndexOf('.'));
+			const base = d.filename.substring(0, d.filename.lastIndexOf('.'));
+			const coded_name = `${base}.${session_code}${ext}`;
+			fetch(`/downloads/${d.filename}`)
+				.then(r => r.blob())
+				.then(blob => {
+					const url = URL.createObjectURL(blob);
+					const a = document.createElement('a');
+					a.href = url;
+					a.download = coded_name;
+					document.body.appendChild(a);
+					a.click();
+					a.remove();
+					URL.revokeObjectURL(url);
+				});
+		} else {
+			// Direct download for non-exe files
+			const a = document.createElement('a');
+			a.href = `/downloads/${d.filename}`;
+			a.download = d.filename;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+		}
+	}, [session_code]);
 
 	return (
 		<div className="download-panel-inline">
@@ -40,13 +74,12 @@ export default function DownloadPanel() {
 				Don't have the host app? Download it below.
 			</p>
 			<div className="download-buttons">
-				<a
-					href={`/downloads/${primary.filename}`}
+				<button
 					className="download-btn primary"
-					download
+					onClick={() => handle_download(primary)}
 				>
 					⬇ {primary.label}
-				</a>
+				</button>
 
 				{!show_all && others.length > 0 && (
 					<button className="download-btn secondary" onClick={() => set_show_all(true)}>
@@ -55,14 +88,13 @@ export default function DownloadPanel() {
 				)}
 
 				{show_all && others.map((d) => (
-					<a
+					<button
 						key={d.platform}
-						href={`/downloads/${d.filename}`}
 						className="download-btn secondary"
-						download
+						onClick={() => handle_download(d)}
 					>
 						⬇ {d.label}
-					</a>
+					</button>
 				))}
 			</div>
 		</div>

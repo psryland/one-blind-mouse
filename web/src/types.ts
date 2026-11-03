@@ -15,9 +15,18 @@ export interface SessionState {
 
 // Colour palette for auto-assigning cursor colours
 export const CURSOR_COLOURS = [
-	'#FF6B35', '#4ECDC4', '#45B7D1', '#96CEB4',
-	'#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F',
-	'#BB8FCE', '#85C1E9', '#F1948A', '#82E0AA',
+	'#E53935', // red
+	'#1E88E5', // blue
+	'#43A047', // green
+	'#8E24AA', // purple
+	'#FB8C00', // orange
+	'#00ACC1', // teal
+	'#D81B60', // pink
+	'#3949AB', // indigo
+	'#F4511E', // deep orange
+	'#00897B', // dark teal
+	'#7B1FA2', // deep purple
+	'#039BE5', // light blue
 ];
 
 export function Generate_Session_Code(): string {
