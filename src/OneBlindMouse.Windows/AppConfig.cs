@@ -13,10 +13,10 @@ internal static class AppConfig
 	public const string ProductName = "One-Blind-Mouse";
 
 	/// <summary>The relay WebSocket endpoint.</summary>
-	private const string DefaultRelayUrl = "wss://REPLACE.azurecontainerapps.io/v1";
+	private const string DefaultRelayUrl = "wss://obm-relay.orangeglacier-22ba4601.australiaeast.azurecontainerapps.io/v1";
 
 	/// <summary>The landing page that hosts download and join links.</summary>
-	private const string DefaultWebUrl = "https://REPLACE.azurestaticapps.net";
+	private const string DefaultWebUrl = "https://icy-sky-078193800.6.azurestaticapps.net";
 
 	/// <summary>The relay endpoint. Debug builds may override it with OBM_RELAY_URL for local testing.</summary>
 	public static Uri RelayUri { get; } = new(DebugOverride("OBM_RELAY_URL") ?? DefaultRelayUrl);

@@ -8,7 +8,7 @@
 //   - Azure Static Web App (Free) for the landing page and /j/<CODE> join links
 //
 // Deployed in two phases by deploy.ps1, because the relay image must be pushed to the registry before the Container App can use it:
-//   1. deploy_app=false: registry, logs, environment and static web app
+//   1. deploy_app=false: registry, pull identity, logs, environment and static web app
 //   2. deploy_app=true:  the above plus the Container App, using relay_image
 
 targetScope = 'resourceGroup'
@@ -49,6 +49,23 @@ resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
 	}
 }
 
+// The relay pulls its image with this identity. It is created and granted AcrPull in the base phase, so the permission
+// has propagated before the Container App first pulls (a system-assigned identity would only exist once the app does).
+resource pull_identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+	name: '${name_prefix}-relay-pull'
+	location: location
+}
+
+resource pull_identity_acr_pull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+	name: guid(registry.id, pull_identity.id, acr_pull_role_id)
+	scope: registry
+	properties: {
+		roleDefinitionId: acr_pull_role_id
+		principalId: pull_identity.properties.principalId
+		principalType: 'ServicePrincipal'
+	}
+}
+
 resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
 	name: '${name_prefix}-logs'
 	location: location
@@ -84,7 +101,10 @@ resource relay 'Microsoft.App/containerApps@2024-03-01' = if (deploy_app) {
 	name: '${name_prefix}-relay'
 	location: location
 	identity: {
-		type: 'SystemAssigned'
+		type: 'UserAssigned'
+		userAssignedIdentities: {
+			'${pull_identity.id}': {}
+		}
 	}
 	properties: {
 		environmentId: environment.id
@@ -98,11 +118,11 @@ resource relay 'Microsoft.App/containerApps@2024-03-01' = if (deploy_app) {
 				allowInsecure: false
 			}
 
-			// Pull from the registry using the app's own identity (no registry passwords)
+			// Pull from the registry using the pull identity (no registry passwords)
 			registries: [
 				{
 					server: registry.properties.loginServer
-					identity: 'system'
+					identity: pull_identity.id
 				}
 			]
 		}
@@ -143,18 +163,6 @@ resource relay 'Microsoft.App/containerApps@2024-03-01' = if (deploy_app) {
 				maxReplicas: 1
 			}
 		}
-	}
-}
-
-// Let the relay's identity pull images. On the very first deployment the first image pull can happen before this assignment
-// propagates; deploy.ps1 retries the app phase once to cover that.
-resource relay_acr_pull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deploy_app) {
-	name: guid(registry.id, '${name_prefix}-relay', acr_pull_role_id)
-	scope: registry
-	properties: {
-		roleDefinitionId: acr_pull_role_id
-		principalId: relay!.identity.principalId
-		principalType: 'ServicePrincipal'
 	}
 }
 

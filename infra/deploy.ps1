@@ -64,7 +64,7 @@ Invoke-Az group create --name $ResourceGroup --location $Location --output none 
 
 # 2. Base resources. Registering providers is idempotent and avoids first-use failures in new subscriptions.
 Write-Host "Registering resource providers..." -ForegroundColor Yellow
-foreach ($provider in @("Microsoft.App", "Microsoft.ContainerRegistry", "Microsoft.OperationalInsights", "Microsoft.Web"))
+foreach ($provider in @("Microsoft.App", "Microsoft.ContainerRegistry", "Microsoft.ManagedIdentity", "Microsoft.OperationalInsights", "Microsoft.Web"))
 {
 	Invoke-Az provider register --namespace $provider --wait --output none | Out-Null
 }
@@ -83,19 +83,9 @@ Invoke-Az acr build `
 	--file (Join-Path $repo_root "src/OneBlindMouse.Relay/Dockerfile") `
 	$repo_root | Out-Host
 
-# 4. Relay Container App. On the first deployment the app's identity is created in the same deployment as its AcrPull role,
-# so the first image pull can fail before the role propagates. One retry after a short wait covers that.
+# 4. Relay Container App
 Write-Host "Deploying relay Container App..." -ForegroundColor Yellow
-try
-{
-	$app = Deploy-Template -Name "obm-app" -Parameters @("deploy_app=true", "relay_image=$image")
-}
-catch
-{
-	Write-Host "App deployment failed (often the registry role is still propagating). Retrying in 60 s..." -ForegroundColor DarkYellow
-	Start-Sleep -Seconds 60
-	$app = Deploy-Template -Name "obm-app" -Parameters @("deploy_app=true", "relay_image=$image")
-}
+$app = Deploy-Template -Name "obm-app" -Parameters @("deploy_app=true", "relay_image=$image")
 $relay_url = $app.relay_url.value
 $site_hostname = $app.site_hostname.value
 
