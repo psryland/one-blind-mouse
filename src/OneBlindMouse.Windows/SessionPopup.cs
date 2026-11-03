@@ -12,7 +12,7 @@ internal sealed unsafe class SessionPopup : NativeWindow
 {
 	// Control ids
 	private const int IdCode = 100, IdCopy = 101, IdCopyLink = 102, IdJoinText = 103, IdJoin = 104, IdMembers = 105;
-	private const int IdName = 106, IdRename = 107, IdLeave = 108, IdNewCode = 109, IdHint = 110, IdTitle = 111, IdCodeLabel = 112, IdJoinLabel = 113, IdNameLabel = 114;
+	private const int IdName = 106, IdRename = 107, IdLeave = 108, IdNewCode = 109, IdHint = 110, IdTitle = 111, IdCodeLabel = 112, IdJoinLabel = 113, IdNameLabel = 114, IdClose = 115;
 
 	// Layout at 96 DPI
 	private const int Width96 = 340, Pad96 = 12, Row96 = 26, Gap96 = 8, Button96 = 80;
@@ -32,8 +32,8 @@ internal sealed unsafe class SessionPopup : NativeWindow
 		const uint ex = User32.WS_EX_TOOLWINDOW | User32.WS_EX_TOPMOST | User32.WS_EX_CONTROLPARENT;
 		CreateWindow("OBM.Popup", ex, User32.WS_POPUP | User32.WS_BORDER | User32.WS_CLIPCHILDREN, AppConfig.Title(AppConfig.ProductName), new RECT(0, 0, 1, 1), background: User32.GetSysColorBrush(User32.COLOR_BTNFACE));
 
-		// Create the controls; their positions are set by Layout
-		Add("STATIC", AppConfig.Title(AppConfig.ProductName), User32.SS_LEFT | User32.SS_NOPREFIX, IdTitle);
+		// Create the controls; their positions are set by Layout. The heading omits the test tag, which only labels the window title
+		Add("STATIC", AppConfig.ProductName, User32.SS_LEFT | User32.SS_NOPREFIX, IdTitle);
 		Add("STATIC", "Your code — share it with the people you want to point with you:", User32.SS_LEFT, IdCodeLabel);
 		Add("EDIT", "", User32.ES_READONLY | User32.ES_CENTER | User32.WS_TABSTOP, IdCode, User32.WS_EX_CLIENTEDGE);
 		Add("BUTTON", "Copy", User32.BS_PUSHBUTTON | User32.WS_TABSTOP, IdCopy);
@@ -48,6 +48,7 @@ internal sealed unsafe class SessionPopup : NativeWindow
 		Add("BUTTON", "Leave session", User32.BS_PUSHBUTTON | User32.WS_TABSTOP, IdLeave);
 		Add("BUTTON", "New code", User32.BS_PUSHBUTTON | User32.WS_TABSTOP, IdNewCode);
 		Add("STATIC", "", User32.SS_LEFT | User32.SS_NOPREFIX, IdHint);
+		Add("BUTTON", "Close", User32.BS_PUSHBUTTON | User32.WS_TABSTOP, IdClose);
 		User32.SendMessageW(Ctl(IdName), User32.EM_LIMITTEXT, Protocol.MaxNameLength, 0);
 		User32.SendMessageW(Ctl(IdJoinText), User32.EM_LIMITTEXT, 256, 0);
 		fixed (char* cue = "Paste a code or link")
@@ -69,7 +70,7 @@ internal sealed unsafe class SessionPopup : NativeWindow
 	/// <summary>True while the popup is on screen.</summary>
 	public bool IsVisible => User32.IsWindowVisible(Handle);
 
-	/// <summary>Show the popup above the notification area, or hide it if it was just hidden by the click that is now asking to show it.</summary>
+	/// <summary>Show the popup, unless it was just hidden by the click that is now asking to show it.</summary>
 	public void Toggle()
 	{
 		// Clicking the tray icon deactivates the popup (hiding it) just before the click arrives, so a very recent hide means "close"
@@ -79,7 +80,7 @@ internal sealed unsafe class SessionPopup : NativeWindow
 		Show();
 	}
 
-	/// <summary>Show the popup above the notification area of the monitor with the cursor.</summary>
+	/// <summary>Show the popup in the centre of the primary monitor.</summary>
 	public void Show()
 	{
 		// Offer a code from the clipboard so joining is just one click
@@ -87,14 +88,12 @@ internal sealed unsafe class SessionPopup : NativeWindow
 		if (User32.GetWindowTextLengthW(join) == 0 && Clipboard.GetText() is { } clip && SessionCode.TryParse(clip, out var code) && code != m_snap?.Code)
 			User32.SetWindowTextW(join, code.Display);
 
-		// Lay out for the monitor's DPI and place it in the corner of the work area nearest the taskbar
-		User32.GetCursorPos(out var pt);
-		var mon = Monitors.At(pt.X, pt.Y);
+		// Lay out for the primary monitor's DPI and centre it in that monitor's work area, where it is easy to find
+		var mon = Monitors.Primary();
 		var size = Layout(mon.Dpi);
 		var work = mon.WorkArea;
-		var margin = Scale(Gap96);
-		var x = Math.Clamp(pt.X - size.CX / 2, work.Left + margin, work.Right - size.CX - margin);
-		var y = pt.Y > work.Bottom - margin ? work.Bottom - size.CY - margin : pt.Y < work.Top + margin ? work.Top + margin : Math.Clamp(pt.Y - size.CY / 2, work.Top + margin, work.Bottom - size.CY - margin);
+		var x = work.Left + (work.Width - size.CX) / 2;
+		var y = work.Top + (work.Height - size.CY) / 2;
 		User32.SetWindowPos(Handle, User32.HWND_TOPMOST, x, y, size.CX, size.CY, User32.SWP_SHOWWINDOW);
 		User32.SetForegroundWindow(Handle);
 		User32.SetFocus(Ctl(User32.GetWindowTextLengthW(join) != 0 ? IdJoin : IdJoinText));
@@ -206,6 +205,7 @@ internal sealed unsafe class SessionPopup : NativeWindow
 				break;
 			}
 			case User32.IDCANCEL:
+			case IdClose:
 			{
 				Hide();
 				break;
@@ -296,7 +296,9 @@ internal sealed unsafe class SessionPopup : NativeWindow
 		Place(IdNewCode, pad + (inner + gap) / 2, y, (inner - gap) / 2, row);
 		y += row + gap;
 		Place(IdHint, pad, y, inner, line * 3);
-		y += line * 3 + pad;
+		y += line * 3 + gap;
+		Place(IdClose, width - pad - button, y, button, row);
+		y += row + pad;
 
 		// Add the border thickness so the client area is the laid-out size
 		User32.GetWindowRect(Handle, out var wr);

@@ -170,7 +170,7 @@ Pointer samples are 12-byte binary frames (little endian):
 - **Tray icon** in the user's palette colour (grey when offline). Left click toggles the session popup; right click opens the menu:
   show session, point on ▸, what I'm sharing ▸ (monitors / pick a window), pointing frames ▸, hold key ▸, pointer size ▸, show pointers in my screen share,
   open join links with this app, copy code, copy join link, new code, leave session, remove ▸ (owner), quit.
-- **Session popup**: code, copy buttons, join box, member list, name, leave, new code and a usage hint.
+- **Session popup**, centred on the primary monitor: code, copy buttons, join box, member list, name, leave, new code, a usage hint and a Close button. Clicking elsewhere or pressing Esc also closes it.
 - **Single instance** per user, logon session and profile (named mutex). A second launch forwards its join code (or "activate") to the running instance over the local pipe and exits.
 - **Settings** (`%APPDATA%\OneBlindMouse\settings.json`): name, colour preference, hold key, shared monitor, pointer size, show in capture. Crash logs go to the same directory.
 - **Testing options.** `--profile NAME` isolates settings, mutex and pipe so several instances run side by side; `--title-tag TEXT` prefixes window titles.
