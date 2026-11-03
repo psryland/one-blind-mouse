@@ -1,0 +1,10 @@
+<Solution>
+	<Folder Name="/src/">
+		<Project Path="src/OneBlindMouse.Core/OneBlindMouse.Core.csproj" />
+		<Project Path="src/OneBlindMouse.Relay/OneBlindMouse.Relay.csproj" />
+		<Project Path="src/OneBlindMouse.Windows/OneBlindMouse.Windows.csproj" />
+	</Folder>
+	<Folder Name="/tests/">
+		<Project Path="tests/OneBlindMouse.Tests/OneBlindMouse.Tests.csproj" />
+	</Folder>
+</Solution>

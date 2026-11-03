@@ -1,88 +1,184 @@
-// Three Blind Mice — Azure Infrastructure (Bicep)
+// One-Blind-Mouse — Azure infrastructure.
 //
 // Deploys:
-//   1. Azure Static Web App (Free tier) — hosts the React SPA + API
-//   2. Azure Web PubSub (Free tier) — real-time cursor relay
+//   - Azure Container Registry (Basic, admin user disabled) for the relay image
+//   - Log Analytics workspace for container logs
+//   - Container Apps managed environment (Consumption)
+//   - Container App running the relay (WebSockets at wss://<fqdn>/v1)
+//   - Azure Static Web App (Free) for the landing page and /j/<CODE> join links
 //
-// Usage:
-//   az deployment group create \
-//     --resource-group <rg-name> \
-//     --template-file infra/main.bicep \
-//     --parameters app_name=three-blind-mice location=australiaeast
+// Deployed in two phases by deploy.ps1, because the relay image must be pushed to the registry before the Container App can use it:
+//   1. deploy_app=false: registry, logs, environment and static web app
+//   2. deploy_app=true:  the above plus the Container App, using relay_image
 
 targetScope = 'resourceGroup'
 
-@description('Base name for all resources')
-param app_name string = 'three-blind-mice'
+@description('Short prefix for resource names')
+@minLength(2)
+@maxLength(10)
+param name_prefix string = 'obm'
 
-@description('Azure region for all resources')
+@description('Azure region for the registry, logs and container app')
 param location string = resourceGroup().location
 
-@description('SKU for Static Web App')
-@allowed(['Free', 'Standard'])
-param swa_sku string = 'Free'
+@description('Azure region for the static web app (only some regions offer Static Web Apps)')
+@allowed(['centralus', 'eastus2', 'eastasia', 'westeurope', 'westus2'])
+param swa_location string = 'eastasia'
 
-@description('SKU for Web PubSub')
-@allowed(['Free_F1', 'Standard_S1'])
-param pubsub_sku string = 'Free_F1'
+@description('Deploy the relay Container App. Requires relay_image to exist in the registry.')
+param deploy_app bool = false
 
-// Static Web App
-resource static_web_app 'Microsoft.Web/staticSites@2023-12-01' = {
-	name: app_name
+@description('Relay image reference in the registry, e.g. "obm-relay:20240101-1200"')
+param relay_image string = 'obm-relay:latest'
+
+// Registry names must be globally unique and alphanumeric only
+var suffix = uniqueString(resourceGroup().id)
+var acr_name = toLower(replace('${name_prefix}${suffix}', '-', ''))
+
+// Built-in AcrPull role
+var acr_pull_role_id = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+
+resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
+	name: acr_name
 	location: location
 	sku: {
-		name: swa_sku
-		tier: swa_sku
+		name: 'Basic'
 	}
 	properties: {
-		buildProperties: {
-			apiLocation: 'api'
-			appLocation: '/'
-			outputLocation: 'dist'
+		adminUserEnabled: false
+	}
+}
+
+resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+	name: '${name_prefix}-logs'
+	location: location
+	properties: {
+		sku: {
+			name: 'PerGB2018'
+		}
+		retentionInDays: 30
+	}
+}
+
+resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
+	name: '${name_prefix}-env'
+	location: location
+	properties: {
+		appLogsConfiguration: {
+			destination: 'log-analytics'
+			logAnalyticsConfiguration: {
+				customerId: logs.properties.customerId
+				sharedKey: logs.listKeys().primarySharedKey
+			}
+		}
+		workloadProfiles: [
+			{
+				name: 'Consumption'
+				workloadProfileType: 'Consumption'
+			}
+		]
+	}
+}
+
+resource relay 'Microsoft.App/containerApps@2024-03-01' = if (deploy_app) {
+	name: '${name_prefix}-relay'
+	location: location
+	identity: {
+		type: 'SystemAssigned'
+	}
+	properties: {
+		environmentId: environment.id
+		workloadProfileName: 'Consumption'
+		configuration: {
+			// HTTP ingress carries WebSocket upgrades, so 'auto' transport is enough
+			ingress: {
+				external: true
+				targetPort: 8080
+				transport: 'auto'
+				allowInsecure: false
+			}
+
+			// Pull from the registry using the app's own identity (no registry passwords)
+			registries: [
+				{
+					server: registry.properties.loginServer
+					identity: 'system'
+				}
+			]
+		}
+		template: {
+			containers: [
+				{
+					name: 'relay'
+					image: '${registry.properties.loginServer}/${relay_image}'
+					resources: {
+						cpu: json('0.25')
+						memory: '0.5Gi'
+					}
+					probes: [
+						{
+							type: 'Liveness'
+							httpGet: {
+								path: '/healthz'
+								port: 8080
+							}
+							periodSeconds: 30
+						}
+						{
+							type: 'Readiness'
+							httpGet: {
+								path: '/healthz'
+								port: 8080
+							}
+							periodSeconds: 10
+						}
+					]
+				}
+			]
+
+			// Rooms live in the relay's memory, so exactly one replica must run.
+			// More replicas would split peers of the same room across processes that cannot see each other.
+			scale: {
+				minReplicas: 1
+				maxReplicas: 1
+			}
 		}
 	}
 }
 
-// Web PubSub
-resource web_pubsub 'Microsoft.SignalRService/webPubSub@2024-03-01' = {
-	name: '${app_name}-pubsub'
-	location: location
+// Let the relay's identity pull images. On the very first deployment the first image pull can happen before this assignment
+// propagates; deploy.ps1 retries the app phase once to cover that.
+resource relay_acr_pull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deploy_app) {
+	name: guid(registry.id, '${name_prefix}-relay', acr_pull_role_id)
+	scope: registry
+	properties: {
+		roleDefinitionId: acr_pull_role_id
+		principalId: relay!.identity.principalId
+		principalType: 'ServicePrincipal'
+	}
+}
+
+resource site 'Microsoft.Web/staticSites@2023-12-01' = {
+	name: '${name_prefix}-site'
+	location: swa_location
 	sku: {
-		name: pubsub_sku
-		capacity: 1
+		name: 'Free'
+		tier: 'Free'
 	}
 	properties: {}
 }
 
-// Web PubSub hub — 'tbm' hub for Three Blind Mice
-resource pubsub_hub 'Microsoft.SignalRService/webPubSub/hubs@2024-03-01' = {
-	parent: web_pubsub
-	name: 'tbm'
-	properties: {
-		anonymousConnectPolicy: 'deny'
-		eventHandlers: []
-	}
-}
+@description('Registry name, for "az acr build"')
+output registry_name string = registry.name
 
-// Wire PubSub connection string into SWA app settings
-resource swa_app_settings 'Microsoft.Web/staticSites/config@2023-12-01' = {
-	parent: static_web_app
-	name: 'appsettings'
-	properties: {
-		WEBPUBSUB_CONNECTION_STRING: web_pubsub.listKeys().primaryConnectionString
-	}
-}
+@description('Registry login server')
+output registry_login_server string = registry.properties.loginServer
 
-// Outputs
-@description('Static Web App default hostname')
-output swa_hostname string = static_web_app.properties.defaultHostname
+@description('Relay WebSocket URL to compile into the Windows app (empty until the app phase)')
+output relay_url string = deploy_app ? 'wss://${relay!.properties.configuration.ingress.fqdn}/v1' : ''
 
-@description('Static Web App deployment token')
-output swa_deployment_token string = static_web_app.listSecrets().properties.apiKey
+@description('Static web app name')
+output site_name string = site.name
 
-@description('Web PubSub hostname')
-output pubsub_hostname string = web_pubsub.properties.hostName
-
-@description('Web PubSub connection string')
-@secure()
-output pubsub_connection_string string = web_pubsub.listKeys().primaryConnectionString
+@description('Static web app default host name')
+output site_hostname string = site.properties.defaultHostname

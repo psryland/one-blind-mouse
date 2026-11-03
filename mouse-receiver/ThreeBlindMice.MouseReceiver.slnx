@@ -1,5 +1,0 @@
-<Solution>
-  <Project Path="ThreeBlindMice.Core/ThreeBlindMice.Core.csproj" />
-  <Project Path="ThreeBlindMice.Linux/ThreeBlindMice.Linux.csproj" />
-  <Project Path="ThreeBlindMice.Windows/ThreeBlindMice.Windows.csproj" />
-</Solution>

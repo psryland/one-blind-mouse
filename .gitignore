@@ -44,3 +44,6 @@ TestResults/
 # Logs
 *.log
 npm-debug.log*
+
+# Deployment staging (infra/deploy.ps1)
+.deploy-web/

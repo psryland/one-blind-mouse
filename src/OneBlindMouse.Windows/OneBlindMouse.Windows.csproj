@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<RootNamespace>OneBlindMouse.Windows</RootNamespace>
+		<AssemblyName>OneBlindMouse</AssemblyName>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+
+		<!-- Single portable exe with no runtime dependency -->
+		<PublishAot>true</PublishAot>
+		<InvariantGlobalization>true</InvariantGlobalization>
+		<UseSystemResourceKeys>true</UseSystemResourceKeys>
+		<OptimizationPreference>Size</OptimizationPreference>
+		<StackTraceSupport>true</StackTraceSupport>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\OneBlindMouse.Core\OneBlindMouse.Core.csproj" />
+	</ItemGroup>
+
+</Project>

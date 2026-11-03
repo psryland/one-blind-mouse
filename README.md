@@ -1,137 +1,83 @@
-# Three Blind Mice 🐭🐭🐭
+# One-Blind-Mouse
 
-A lightweight remote mouse pointer overlay for screen-sharing sessions. Remote users point at things on your screen using just a browser — no install required for remote participants.
+Point at things on someone else's screen.
 
-**How it works:**
-1. The **host** (screen-sharer) downloads and runs a tiny mouse-receiver app (~200 KB)
-2. Remote users open a link in their browser, join the room, and move their mouse
-3. Coloured, named cursors appear on the host's desktop as a transparent, click-through overlay
+One-Blind-Mouse is a portable Windows tray app for screen-share calls. Run it, share the code it shows, and everyone in the session gets a named,
+coloured pointer that the others can see on top of their screens. It is a way to communicate, not remote control: pointers never click, type or take focus.
 
-## Quick Start
+AI agents can use it too, to show you where to click or where something is on your screen.
 
-### For the Host (screen-sharer)
+## Using it
 
-1. **Prerequisites:** [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
-2. Visit the web app and create a room
-3. Download the mouse-receiver for your platform (Windows or Linux)
-4. Run the receiver with your room code:
-   ```
-   ThreeBlindMice.Windows.exe --room ABC123
-   ```
-5. Share the room link with remote participants
-6. Cursors from remote users will appear on your desktop
+1. Run `OneBlindMouse.exe` (no install, no sign-in). A popup shows your code, e.g. `K7QM-4PZX`.
+2. Paste the code into the call chat. The other person runs the app, pastes the code into **Join someone** and presses Enter.
+3. **Hold Right Ctrl** and move the mouse to point. While held:
+   - left click shows a ripple, left drag draws a laser trail, right click pulses, the wheel changes pointer size;
+   - your clicks don't reach your own apps;
+   - release the key or press Esc to stop.
 
-### For Remote Users
+Remote pointers appear on the monitor (or window) you choose under **What I'm sharing** in the tray menu. It should match what you share in the call.
+The pointer you send is mapped onto the meeting window under your cursor, or onto a frame you draw with **Pointing frames**, so it lands in the same place on the other screen.
 
-1. Open the room link shared by the host
-2. Enter your name and click **Join**
-3. Click the mouse canvas area to lock your pointer
-4. Move your mouse — the host will see your cursor on their screen
-5. Press **Escape** to release your mouse
+Optional: **Open join links with this app** registers `obm://` links for your user, so a shared join link opens the app directly.
 
-## Architecture
+## AI agents
 
-```
-┌──────────────────┐     ┌──────────────────────┐     ┌──────────────────┐
-│  Remote Browser   │────▶│  Azure Static Web App │────▶│  /api/negotiate  │
-│  (React SPA)      │     │   (SPA + API)         │     │  (Azure Function)│
-└──────┬───────────┘     └──────────────────────┘     └────────┬─────────┘
-       │                                                        │
-       │  WebSocket (json.webpubsub.azure.v1)                  │ Token
-       │                                                        │
-       ▼                                                        ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                     Azure Web PubSub                                 │
-│  Hub: tbm    Groups: per-room    Protocol: JSON subprotocol          │
-└──────────────────────────────────┬───────────────────────────────────┘
-                                   │
-                                   ▼
-                          ┌──────────────────┐
-                          │  Host Desktop     │
-                          │  Mouse Receiver   │
-                          │  (transparent,    │
-                          │   topmost,        │
-                          │   click-through)  │
-                          └──────────────────┘
+`OneBlindMouse.exe mcp` is an MCP server (stdio) that draws pointers, clicks, highlights and arrows on the local screen:
+
+```json
+{ "mcpServers": { "one-blind-mouse": { "command": "C:\\Tools\\OneBlindMouse.exe", "args": ["mcp"] } } }
 ```
 
-## Tech Stack
+`OneBlindMouse.exe mcp --join CODE --name "My agent"` joins a session as a remote member instead, so an agent on another machine can point on your screen.
 
-| Component | Technology |
-|-----------|-----------|
-| Web app | React + TypeScript + Vite |
-| Realtime | Azure Web PubSub (Free tier) |
-| Hosting | Azure Static Web App (Free tier) |
-| API | Azure Functions (Node.js) |
-| Mouse-receiver | C# .NET 8 + platform P/Invoke |
-| Infrastructure | Bicep + PowerShell |
+## How it works
 
-## Project Structure
+Every instance keeps one outbound WebSocket (TLS, port 443) to a small relay in Azure, so it works behind NAT, proxies and firewalls.
+A code is a room id plus a secret; the relay checks it with an HMAC verifier and locks a room after repeated wrong guesses.
+Pointer positions are 12-byte frames, expressed as fractions of the receiver's shared area, so screen sizes and DPI don't matter.
 
-```
-three-blind-mice/
-├── web/                # React SPA (remote + host UI)
-├── api/                # Azure Functions (negotiate endpoint)
-├── mouse-receiver/     # C# .NET 8 headless overlay
-│   ├── ThreeBlindMice.Core/      # Shared: WebSocket, protocol, state
-│   ├── ThreeBlindMice.Windows/   # Win32 P/Invoke overlay (GDI+)
-│   └── ThreeBlindMice.Linux/     # X11 P/Invoke overlay (Xlib)
-├── infra/              # Bicep + deploy script
-└── docs/               # Implementation plan
-```
+See [docs/design.md](docs/design.md) for the full design.
 
-## Building from Source
+## Repository
 
-### Web App
+| Path | Contents |
+|---|---|
+| `src/OneBlindMouse.Core` | Protocol, session codes, relay client (platform-neutral) |
+| `src/OneBlindMouse.Relay` | WebSocket relay (ASP.NET Core) |
+| `src/OneBlindMouse.Windows` | Tray app and MCP server (NativeAOT, Win32) |
+| `tests/OneBlindMouse.Tests` | Unit and end-to-end tests |
+| `infra/` | Azure Bicep and deployment script |
+| `web/` | Landing and join pages (Static Web App) |
+
+## Building
+
+Requires the .NET 10 SDK.
 
 ```powershell
-cd web
-npm install
-npm run build     # Output: web/dist/
-npm run dev       # Dev server on https://localhost:53100
+dotnet build OneBlindMouse.slnx
+dotnet test OneBlindMouse.slnx
+
+# Portable exe (about 6 MB, no runtime needed)
+dotnet publish src/OneBlindMouse.Windows -c Release -r win-x64 -o artifacts/publish
 ```
 
-### Mouse Receiver (Windows)
+### Local testing
 
 ```powershell
-cd mouse-receiver
-dotnet publish ThreeBlindMice.Windows -c Release -r win-x64 --self-contained false -o ./publish/win-x64
+# Run a relay on http://localhost:5199
+dotnet run --project src/OneBlindMouse.Relay --urls http://localhost:5199
+
+# Debug builds can use it; --profile lets two instances run side by side
+$env:OBM_RELAY_URL = "ws://localhost:5199/v1"
+.\src\OneBlindMouse.Windows\bin\Debug\net10.0-windows\OneBlindMouse.exe --profile A
+.\src\OneBlindMouse.Windows\bin\Debug\net10.0-windows\OneBlindMouse.exe --profile B --join CODE
 ```
 
-### Mouse Receiver (Linux)
-
-```bash
-cd mouse-receiver
-dotnet publish ThreeBlindMice.Linux -c Release -r linux-x64 --self-contained false -o ./publish/linux-x64
-```
-
-### Azure Infrastructure
+### Deployment (one-time)
 
 ```powershell
-cd infra
-./deploy.ps1 -SubscriptionId <id> -ResourceGroup rg-three-blind-mice -Location eastasia
+./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse
 ```
 
-## Platform Notes
-
-- **Windows:** Uses Win32 API (`CreateWindowEx` with `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST`) and GDI+ for rendering. Works on Windows 10+.
-- **Linux (X11):** Uses Xlib with ARGB visuals and XShape extension for click-through. Requires a compositor for transparency. **Wayland does not support click-through overlays** — use X11 or XWayland.
-- **Remote users:** Any modern browser (Chrome, Firefox, Edge, Safari). No install needed.
-
-## Security
-
-The mouse-receiver is inherently low-risk — it is one-way visual only:
-- ❌ No filesystem access
-- ❌ No input simulation (click-through overlay)
-- ❌ No screen capture
-- ❌ No listening ports (outbound WebSocket only)
-- ❌ No elevated privileges required
-- ✅ Code-signed Windows binary
-- ✅ Strict input validation on all WebSocket messages
-- ✅ Room-scoped PubSub tokens
-
-See [docs/plan.md](docs/plan.md) for the full security threat model.
-
-## License
-
-MIT
+Then put the printed relay URL and site hostname into `src/OneBlindMouse.Windows/AppConfig.cs`, and set the download link in `web/js/config.js`.

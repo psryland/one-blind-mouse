@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="robots" content="noindex">
+	<title>Join — One-Blind-Mouse</title>
+	<link rel="stylesheet" href="/style.css">
+	<script src="/js/config.js" defer></script>
+	<script src="/js/join.js" defer></script>
+</head>
+<body>
+	<main>
+		<h1>Join a One-Blind-Mouse session</h1>
+
+		<section id="valid" hidden>
+			<p>Your session code is:</p>
+			<p class="code" id="code" aria-live="polite"></p>
+			<p>
+				<button type="button" id="copy">Copy code</button>
+				<span id="copy-status" role="status" aria-live="polite"></span>
+			</p>
+			<p><a class="button" id="open" href="/">Open in One-Blind-Mouse</a></p>
+
+			<h2>Don't have One-Blind-Mouse?</h2>
+			<p>
+				<a data-download>Download it</a>,
+				run it, and paste this code.
+			</p>
+		</section>
+
+		<section id="invalid" hidden>
+			<p>This link does not contain a valid session code. Ask for the link again, or type the code into the app.</p>
+			<p><a href="/">About One-Blind-Mouse</a></p>
+		</section>
+
+		<noscript>
+			<p>This page needs JavaScript to read the code from the link. You can also type the code from the link into the app.</p>
+		</noscript>
+	</main>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# Only Directory.Build.props and src/ are needed to build the relay image
+.git
+.github
+.vs
+.vscode
+**/bin
+**/obj
+**/node_modules
+api
+docs
+infra
+mouse-receiver
+tests
+web
+src/OneBlindMouse.Windows
+*.md
