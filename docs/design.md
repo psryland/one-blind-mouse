@@ -201,8 +201,8 @@ Example MCP configuration (`~\.copilot\mcp-config.json` for Copilot CLI):
 { "mcpServers": { "one-blind-mouse": { "type": "local", "command": "C:\\Users\\<user>\\AppData\\Local\\OneBlindMouse\\OneBlindMouse.exe", "args": ["mcp"], "tools": ["*"] } } }
 ```
 
-The agent skill in `skills/one-blind-mouse` teaches an agent when and how to point, how to convert screenshot or UI automation positions into physical
-pixels, and how to obtain and register the tool. `skills/one-blind-mouse/scripts/obm.ps1` calls a single tool from the shell when the MCP server is not loaded.
+The MCP server's instructions describe the tools and the coordinate space (physical virtual-desktop pixels). Agent skills that decide when to point, and how
+to obtain and register the tool, are kept outside this repository.
 
 The pipe (`\\.\pipe\OneBlindMouse-<sid>-<session>[-profile]`) accepts JSON lines `{id, cmd, …}` and replies `{id, ok, result | error}`.
 It is created with `CurrentUserOnly`, requests are capped at 64 KB and all arguments are validated (coordinates within the virtual screen, colours `#RRGGBB`, sanitised labels).
@@ -225,8 +225,10 @@ Tools: `get_session` (members, what each shares and its aspect ratio), `point_at
 - macOS and Linux clients (the Core library and protocol are platform-neutral), a browser sender, code signing, optional join approval.
 
 ## 10. Deployment (one-time)
-`./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse [-Location australiaeast]` creates a container registry, Log Analytics, a Container Apps environment and a Static Web App,
-builds the relay image in the registry (`az acr build`, no local Docker), deploys the relay with one replica, uploads `web/`, and prints the relay URL and site hostname.
+`./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse [-Location australiaeast] [-CustomDomain one-blind-mouse.rylogic.co.nz]` creates a container registry, Log Analytics, a Container Apps environment and a Static Web App,
+builds the relay image in the registry (`az acr build`, no local Docker), deploys the relay with one replica, uploads `web/`, and prints the relay URL and site address.
+With `-CustomDomain`, it also adds that domain to the Static Web App, which issues a free certificate. The domain needs a CNAME record pointing at the site's default
+host name (`<name>.azurestaticapps.net`) first. The live site is https://one-blind-mouse.rylogic.co.nz; links on the default host name keep working.
 Compile those into `AppConfig` (`DefaultRelayUrl`, `DefaultWebUrl`) and the site's download link (`web/js/config.js`), then publish the app:
 
 ```powershell

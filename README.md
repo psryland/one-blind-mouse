@@ -7,6 +7,8 @@ coloured pointer that the others can see on top of their screens. It is a way to
 
 AI agents can use it too, to show you where to click or where something is on your screen.
 
+Website and download: https://one-blind-mouse.rylogic.co.nz
+
 ## Using it
 
 1. Run `OneBlindMouse.exe` (no install, no sign-in). A popup shows your code, e.g. `K7QM-4PZX`.
@@ -29,7 +31,7 @@ Optional: **Open join links with this app** registers `obm://` links for your us
 { "mcpServers": { "one-blind-mouse": { "type": "local", "command": "C:\\Users\\<user>\\AppData\\Local\\OneBlindMouse\\OneBlindMouse.exe", "args": ["mcp"], "tools": ["*"] } } }
 ```
 
-For Copilot CLI, register the agent skill too, so the agent knows when to point and how to get coordinates right: `copilot skill add <repo>\skills\one-blind-mouse`.
+The server's built-in instructions tell agents how to use the tools and how to convert screenshot positions into physical screen pixels.
 
 `OneBlindMouse.exe mcp --join CODE --name "My agent"` joins a session as a remote member instead, so an agent on another machine can point on your screen.
 
@@ -48,7 +50,6 @@ See [docs/design.md](docs/design.md) for the full design.
 | `src/OneBlindMouse.Core` | Protocol, session codes, relay client (platform-neutral) |
 | `src/OneBlindMouse.Relay` | WebSocket relay (ASP.NET Core) |
 | `src/OneBlindMouse.Windows` | Tray app and MCP server (NativeAOT, Win32) |
-| `skills/one-blind-mouse` | Agent skill for pointing things out with the MCP server |
 | `tests/OneBlindMouse.Tests` | Unit and end-to-end tests |
 | `infra/` | Azure Bicep and deployment script |
 | `web/` | Landing and join pages (Static Web App) |
@@ -80,7 +81,8 @@ $env:OBM_RELAY_URL = "ws://localhost:5199/v1"
 ### Deployment (one-time)
 
 ```powershell
-./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse
+./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse -CustomDomain one-blind-mouse.rylogic.co.nz
 ```
 
-Then put the printed relay URL and site hostname into `src/OneBlindMouse.Windows/AppConfig.cs`, and set the download link in `web/js/config.js`.
+`-CustomDomain` is optional and needs a CNAME record pointing at the site's `*.azurestaticapps.net` host name first.
+Then put the printed relay URL and site address into `src/OneBlindMouse.Windows/AppConfig.cs`, and set the download link in `web/js/config.js`.

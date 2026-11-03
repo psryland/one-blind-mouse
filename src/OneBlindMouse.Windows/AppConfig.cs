@@ -16,7 +16,7 @@ internal static class AppConfig
 	private const string DefaultRelayUrl = "wss://obm-relay.orangeglacier-22ba4601.australiaeast.azurecontainerapps.io/v1";
 
 	/// <summary>The landing page that hosts download and join links.</summary>
-	private const string DefaultWebUrl = "https://icy-sky-078193800.6.azurestaticapps.net";
+	private const string DefaultWebUrl = "https://one-blind-mouse.rylogic.co.nz";
 
 	/// <summary>The relay endpoint. Debug builds may override it with OBM_RELAY_URL for local testing.</summary>
 	public static Uri RelayUri { get; } = new(DebugOverride("OBM_RELAY_URL") ?? DefaultRelayUrl);

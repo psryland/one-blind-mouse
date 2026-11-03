@@ -7,15 +7,17 @@
 #
 # Usage:
 #   ./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse
-#   ./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse -Location australiaeast -NamePrefix obm
+#   ./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse -Location australiaeast -NamePrefix obm -CustomDomain one-blind-mouse.rylogic.co.nz
 #
 # Steps:
 #   1. Create the resource group
 #   2. Deploy the base resources (registry, logs, Container Apps environment, static web app)
 #   3. Build the relay image in the registry with 'az acr build' (no local Docker needed)
 #   4. Deploy the relay Container App using that image
-#   5. Upload web/ to the static web app
+#   5. Upload web/ to the static web app, and add the custom domain if one is given
 #   6. Print the relay URL to compile into the Windows app
+#
+# A custom domain needs a CNAME record pointing at the static web app's default host name before this runs; Azure validates it and issues a free certificate.
 
 param(
 	[Parameter(Mandatory = $true)]
@@ -23,7 +25,8 @@ param(
 	[Parameter(Mandatory = $true)]
 	[string]$ResourceGroup,
 	[string]$Location = "australiaeast",
-	[string]$NamePrefix = "obm"
+	[string]$NamePrefix = "obm",
+	[string]$CustomDomain = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -119,8 +122,17 @@ finally
 	}
 }
 
+# Custom domain. Adding an existing domain again is harmless, so redeployments keep it.
+$site_url = "https://$site_hostname"
+if ($CustomDomain)
+{
+	Write-Host "Adding custom domain '$CustomDomain' (validates the CNAME record)..." -ForegroundColor Yellow
+	Invoke-Az staticwebapp hostname set --name $site_name --resource-group $ResourceGroup --hostname $CustomDomain --output none | Out-Null
+	$site_url = "https://$CustomDomain"
+}
+
 # 6. Summary
 Write-Host "`n=== Done ===" -ForegroundColor Green
-Write-Host "Landing page: https://$site_hostname"
+Write-Host "Landing page: $site_url"
 Write-Host "Relay URL:    $relay_url"
-Write-Host "`nPaste the relay URL into the Windows app's compiled-in relay constant." -ForegroundColor Cyan
+Write-Host "`nCompile the relay URL and landing page into the Windows app's AppConfig." -ForegroundColor Cyan
