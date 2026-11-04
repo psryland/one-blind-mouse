@@ -308,7 +308,7 @@ internal static class McpServer
 		public RemoteHost(SessionCode code, string name)
 		{
 			m_code = code;
-			m_relay = new RelayClient(RelayClient.WebSocketConnector(AppConfig.RelayUri), name);
+			m_relay = new RelayClient(RelayClient.WebSocketConnector(AppConfig.RelayUri), name, peers: PeerOptions.Default);
 			m_relay.Notice += (level, text) => Console.Error.WriteLine($"[{level}] {text}");
 			m_relay.Start();
 			m_relay.Join(code);
@@ -436,6 +436,7 @@ internal static class McpServer
 					["is_owner"] = m.Id == snap.Owner,
 					["sharing"] = m.Label,
 					["aspect"] = m.Aspect,
+					["path"] = m.Id == snap.Me ? null : snap.PathTo(m.Id).ToString().ToLowerInvariant(),
 				});
 			}
 			return new JsonObject

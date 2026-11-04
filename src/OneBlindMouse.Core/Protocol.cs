@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -10,7 +12,7 @@ namespace OneBlindMouse.Core;
 public static class Protocol
 {
 	/// <summary>The protocol version spoken by this build.</summary>
-	public const int Version = 1;
+	public const int Version = 2;
 
 	/// <summary>Path of the relay WebSocket endpoint.</summary>
 	public const string Path = "/v1";
@@ -93,6 +95,38 @@ public static class Protocol
 	{
 		return token is not null && token.Length == 32 && token.All(char.IsAsciiHexDigitLower);
 	}
+
+	/// <summary>
+	/// Decode a peer public key: base64 of an uncompressed P-256 point (0x04, X, Y). Returns false for anything else.
+	/// This checks the shape only; whether the point is on the curve is checked when the key is imported.
+	/// </summary>
+	public static bool TryDecodePeerKey(string? key, out byte[] point)
+	{
+		// The base64 length of a 65-byte point is fixed, so other lengths are rejected before decoding
+		point = new byte[PeerMsg.KeyLength];
+		return key is not null && key.Length == 88 && Convert.TryFromBase64String(key, point, out var written) && written == PeerMsg.KeyLength && point[0] == 0x04;
+	}
+
+	/// <summary>
+	/// Parse a peer candidate in "address:port" form ("[address]:port" for IPv6).
+	/// Returns false for unspecified, broadcast and multicast addresses and port zero, because a member must never be able to direct probes at those.
+	/// </summary>
+	public static bool TryParseCandidate(string? candidate, out IPEndPoint endpoint)
+	{
+		// Parse with a length limit so a long string never reaches the parser
+		endpoint = null!;
+		if (candidate is null || candidate.Length == 0 || candidate.Length > PeerMsg.MaxCandidateLength || !IPEndPoint.TryParse(candidate, out var ep))
+			return false;
+
+		// Only specific unicast addresses with a real port
+		var address = ep.Address;
+		if (ep.Port == 0 || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any) || address.Equals(IPAddress.Broadcast)
+			|| address.IsIPv6Multicast || (address.AddressFamily == AddressFamily.InterNetwork && address.GetAddressBytes()[0] >= 224))
+			return false;
+
+		endpoint = ep;
+		return true;
+	}
 }
 
 /// <summary>Error codes carried by <see cref="ErrorMsg"/>.</summary>
@@ -138,6 +172,7 @@ public sealed record MemberInfo(int Id, string Name, int Slot, double Aspect, st
 [JsonDerivedType(typeof(RekeyMsg), "rekey")]
 [JsonDerivedType(typeof(RenameMsg), "rename")]
 [JsonDerivedType(typeof(TargetMsg), "target")]
+[JsonDerivedType(typeof(PeerMsg), "peer")]
 [JsonDerivedType(typeof(WelcomeMsg), "welcome")]
 [JsonDerivedType(typeof(JoinedMsg), "joined")]
 [JsonDerivedType(typeof(MemberJoinedMsg), "member_joined")]
@@ -237,6 +272,32 @@ public sealed record TargetMsg(double Aspect, string Label) : ControlMessage
 	public override bool IsValid()
 	{
 		return Protocol.IsValidAspect(Aspect) && Protocol.IsValidLabel(Label);
+	}
+}
+
+// Both directions ────────────────────────────────────────────────────────────
+
+/// <summary>
+/// Direct-path signalling between two members of a room, forwarded by the relay; see <see cref="PeerTransport"/>.
+/// From a client, Member is the receiver. The relay replaces it with the sender's id, so members cannot impersonate each other.
+/// Key is the sender's public key for this pair of members. Candidates are endpoints where the sender may be reachable.
+/// Reply is true for an answer to an offer, so that answers are never answered again.
+/// </summary>
+public sealed record PeerMsg(int Member, string Key, string[] Candidates, bool Reply) : ControlMessage
+{
+	/// <summary>Length of a decoded key: an uncompressed P-256 point.</summary>
+	public const int KeyLength = 65;
+
+	/// <summary>Maximum number of candidates in one message.</summary>
+	public const int MaxCandidates = 8;
+
+	/// <summary>Maximum length of one candidate string.</summary>
+	public const int MaxCandidateLength = 64;
+
+	public override bool IsValid()
+	{
+		return Protocol.IsValidMember(Member) && Protocol.TryDecodePeerKey(Key, out _)
+			&& Candidates is not null && Candidates.Length <= MaxCandidates && Candidates.All(c => Protocol.TryParseCandidate(c, out _));
 	}
 }
 

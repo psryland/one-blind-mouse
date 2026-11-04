@@ -78,7 +78,7 @@ flowchart LR
 The only transport that works on every network (corporate proxies, hotel Wi-Fi, symmetric NAT) is **outbound TLS on port 443**, so every client keeps one WebSocket to a small relay.
 Pointer traffic is tiny (12-byte frames at up to 30 Hz), so the relay is billed by compute, not messages, and scales to zero when nobody is connected.
 Managed pub/sub services with per-message pricing were rejected for cost.
-The relay URL is compiled into the app; users never see or configure it. A direct peer-to-peer upgrade is future work (§9).
+The relay URL is compiled into the app; users never see or configure it. Pointer samples take a direct peer-to-peer path when the network allows it (§4.6), with the relay as the fallback.
 
 ### 4.2 Codes
 ```
@@ -134,6 +134,9 @@ Control messages are JSON text frames with a `type` discriminator:
 | `create{room, verifier}`, `join{room, verifier}`, `resume{room, member, token}`, `leave` | `joined{room, member, token, owner, members[], resumed}` |
 | `kick{member}`, `rekey{verifier, secret}` (owner) | `member_joined`, `member_updated`, `member_left`, `owner_changed`, `rekeyed{secret}`, `locked`, `kicked` |
 | `rename{name}`, `target{aspect, label}` | `error{code, message}` |
+| `peer{member, key, candidates[], reply}` (to that member) | `peer{member, key, candidates[], reply}` (from that member) |
+
+The protocol version is 2; the relay rejects older clients, because they cannot parse `peer` messages.
 
 Pointer samples are 12-byte binary frames (little endian):
 
@@ -146,6 +149,27 @@ Pointer samples are 12-byte binary frames (little endian):
 - Senders send on change at up to 30 Hz and repeat the last sample every 0.5 s while visible; receivers hide a pointer that has been silent for a few seconds.
 - Receivers buffer samples briefly (`PointerSmoother`) and interpolate, so movement is smooth despite network jitter. Stale and out-of-order samples are dropped by sequence number.
 - Every received field is validated on both relay and client: lengths, ranges, known types, sanitised names (24 chars) and labels (64 chars).
+
+### 4.6 Direct path (peer-to-peer)
+Pointer samples go directly between two members over UDP when their networks allow it. This only improves latency; the relay still carries all control
+messages, and carries samples whenever there is no direct path. Each pair of members in a room is handled separately (a full mesh).
+
+- **Signalling.** For each pair, each side makes a new P-256 key and sends `peer{member, key, candidates}` through the relay, which rewrites `member` to the
+  sender. The lower member id offers first; the other side answers (`reply: true`), or offers itself if nothing arrives within 5 s. Unanswered offers are repeated a few times.
+- **Candidates** (up to 8) are the client's public address as seen by public STUN servers (Cloudflare, Google), then its local IPv4 and global IPv6
+  addresses, all on one dual-stack UDP socket. Azure Container Apps ingress is TCP only, so the relay cannot act as a STUN server.
+- **Keys.** Both sides derive one AES-256-GCM key per direction with ECDH and HKDF-SHA256 (salt: both public keys). The relay sees only public keys, so it
+  cannot read or forge direct packets, but it is trusted to forward keys honestly (no code secret is mixed in).
+- **Packets.** `[0] 0xB1  [1] from  [2] to  [3..10] counter` then the encrypted `kind + body` and a 16-byte tag; the header is authenticated and the counter
+  is the nonce. A 64-packet window rejects replays. Kinds: ping, pong, pointer (the 12-byte frame; `from` comes from the authenticated header).
+- **Hole punching.** Both sides send encrypted pings to all of the other's candidates for 15 s. Replies go to the source address of the authenticated packet,
+  which handles NATs that present an address neither side offered. A pong marks the pair **direct**.
+- **Keepalive and fallback.** Direct pairs ping once a second. With no pong for 3.5 s the pair reverts to the relay, probes again, and the lower id re-offers (at most every 30 s).
+- **Sending.** A sample for one member goes directly if that pair is direct. A broadcast goes directly to direct members and, if any member is not direct,
+  also through the relay. Receivers de-duplicate by sequence number per member, so a sample that arrives by both routes is delivered once.
+- **Scope.** Pairs reset when the client enters a different room or gets a new member id, and survive a relay reconnect that resumes the same slot.
+  Symmetric NATs on both sides, or networks that block outbound UDP, simply stay relayed.
+- The session popup shows each member as "direct" or "relayed", and the `get_session` agent tools report the same as `path`.
 
 ## 5. Coordinates, targets and frames
 
@@ -215,14 +239,15 @@ Tools: `get_session` (members, what each shares and its aspect ratio), `point_at
 ## 8. Security summary
 - Joining needs the full code; guessing is online only, rate limited per room and IP, and triggers an automatic rekey. Every join is announced, every pointer is named, and the owner can remove anyone.
 - Pointers can't click, type or take focus; overlays are click-through, no-activate windows.
-- No screen content leaves the machine. The relay sees names, target labels/aspects and pointer coordinates (TLS in transit); v1 trusts the relay.
+- No screen content leaves the machine. The relay sees names, target labels/aspects and pointer coordinates of relayed samples (TLS in transit); the relay is trusted.
+- Direct packets are encrypted and authenticated with keys the relay cannot derive (§4.6); unauthenticated datagrams are dropped silently. A room member can
+  list arbitrary candidate addresses and so direct a small number of encrypted probes at them (at most 8 addresses, about 5 packets per second each, for 15 s).
 - All network input is validated on both sides. The relay URL is compiled in and can't be changed by a link or argument in release builds. Links only ever carry a code.
 - The local pipe is restricted to the current user; the `obm://` handler is opt-in and HKCU only.
 
 ## 9. Future work
-- **Peer-to-peer upgrade.** Keep the relay for control and fallback; exchange candidates through it, punch a direct UDP path (public STUN; Container Apps ingress is TCP only), and move pointer frames to it with AES-GCM keyed by ECDH plus the code secret.
-  Falls back to the relay if the direct path goes quiet. Matters most when peers are close to each other but far from the relay.
 - **End-to-end encryption** with a PAKE keyed by the code secret, if the relay should become untrusted (the current verifier would then be replaced, since it allows offline guessing by the relay).
+  The same key could then authenticate direct-path signalling.
 - macOS and Linux clients (the Core library and protocol are platform-neutral), a browser sender, code signing, optional join approval.
 
 ## 10. Deployment (one-time)

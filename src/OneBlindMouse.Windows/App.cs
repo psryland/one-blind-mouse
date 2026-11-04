@@ -35,7 +35,7 @@ internal sealed class App : IDisposable
 
 		// The relay client raises events on network threads, so they are marshalled to the UI thread
 		m_ui = new UiDispatcher();
-		m_relay = new RelayClient(RelayClient.WebSocketConnector(AppConfig.RelayUri), m_settings.Name, m_settings.ColourPref);
+		m_relay = new RelayClient(RelayClient.WebSocketConnector(AppConfig.RelayUri), m_settings.Name, m_settings.ColourPref, PeerOptions.Default);
 		m_snap = m_relay.Snapshot;
 		m_relay.SessionChanged += snap => m_ui.Post(() => OnSession(snap));
 		m_relay.PointerReceived += frame => m_ui.Post(() => m_overlay!.OnFrame(frame));

@@ -3,8 +3,8 @@ namespace OneBlindMouse.Relay;
 /// <summary>Abuse limits enforced by the relay. These are deployment policy, not part of the wire protocol.</summary>
 public static class RelayLimits
 {
-	/// <summary>Oldest protocol version the relay accepts.</summary>
-	public const int MinVersion = 1;
+	/// <summary>Oldest protocol version the relay accepts. Version 1 clients cannot parse the direct-path signalling of version 2.</summary>
+	public const int MinVersion = 2;
 
 	/// <summary>How long a disconnected member's slot is kept so the client can resume it.</summary>
 	public static readonly TimeSpan HoldTime = TimeSpan.FromSeconds(30);

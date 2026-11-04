@@ -123,11 +123,11 @@ internal sealed unsafe class SessionPopup : NativeWindow
 		User32.EnableWindow(Ctl(IdLeave), snap.IsShared || (snap.Code is not null && !snap.IsOwner));
 		User32.EnableWindow(Ctl(IdNewCode), snap.IsOwner);
 
-		// Members, with this user and the owner marked
+		// Members, with this user, the owner, and how pointer samples reach each other member marked
 		var lines = snap.Members.Count == 0
 			? "Not connected"
 			: snap.IsShared
-				? "In this session:\n" + string.Join("\n", snap.Members.Select(m => $"  ● {m.Name} ({Palette.Name(m.Slot)}){(m.Id == snap.Me ? " — you" : string.Empty)}{(m.Id == snap.Owner ? " — owner" : string.Empty)}"))
+				? "In this session:\n" + string.Join("\n", snap.Members.Select(m => $"  ● {m.Name} ({Palette.Name(m.Slot)}){(m.Id == snap.Me ? " — you" : $" — {PathLabel(snap.PathTo(m.Id))}")}{(m.Id == snap.Owner ? " — owner" : string.Empty)}"))
 				: "No one has joined yet.\n ";
 		SetText(IdMembers, lines);
 
@@ -142,6 +142,26 @@ internal sealed unsafe class SessionPopup : NativeWindow
 	public void ClearJoin()
 	{
 		SetText(IdJoinText, string.Empty);
+	}
+
+	/// <summary>The member-list label for a pointer path.</summary>
+	private static string PathLabel(EPath path)
+	{
+		switch (path)
+		{
+			case EPath.Direct:
+			{
+				return "direct";
+			}
+			case EPath.Relayed:
+			{
+				return "relayed";
+			}
+			default:
+			{
+				throw new ArgumentOutOfRangeException(nameof(path), path, null);
+			}
+		}
 	}
 
 	/// <inheritdoc/>

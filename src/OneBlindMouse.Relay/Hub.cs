@@ -139,6 +139,11 @@ public sealed class Hub : IDisposable
 					UpdateMember(session);
 					break;
 				}
+				case PeerMsg peer:
+				{
+					OnPeer(session, peer);
+					break;
+				}
 				default:
 				{
 					// Hello again, or a relay-to-client message type
@@ -369,6 +374,17 @@ public sealed class Hub : IDisposable
 			kicked.SendText(new KickedMsg());
 		}
 		RemoveMember(room, member);
+	}
+
+	/// <summary>Forward direct-path signalling to another live member of the same room, naming the sender so it cannot be forged.</summary>
+	private static void OnPeer(Session session, PeerMsg peer)
+	{
+		// Signals for a member that is gone or offline are dropped silently; the sender retries or gives up and uses the relay
+		if (session.Room is not { } room || session.Member is not { } sender)
+			return;
+
+		if (room.Find(peer.Member) is { IsLive: true } target && target != sender)
+			target.Session!.SendText(peer with { Member = sender.Id });
 	}
 
 	/// <summary>Replace the room secret (owner only) and share the new secret with all members.</summary>

@@ -40,6 +40,7 @@ The server's built-in instructions tell agents how to use the tools and how to c
 Every instance keeps one outbound WebSocket (TLS, port 443) to a small relay in Azure, so it works behind NAT, proxies and firewalls.
 A code is a room id plus a secret; the relay checks it with an HMAC verifier and locks a room after repeated wrong guesses.
 Pointer positions are 12-byte frames, expressed as fractions of the receiver's shared area, so screen sizes and DPI don't matter.
+Where the network allows, pointer frames take an encrypted direct UDP path between members for lower latency; the relay remains the fallback.
 
 See [docs/design.md](docs/design.md) for the full design.
 
