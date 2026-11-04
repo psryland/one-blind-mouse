@@ -417,10 +417,11 @@ public sealed class RelayClient : IAsyncDisposable
 		}
 	}
 
-	/// <summary>Exponential back-off with jitter: about 0.5s, 1s, 2s, ... up to 30s.</summary>
+	/// <summary>Exponential back-off with jitter: about 0.5s, 1s, 2s, 4s, then 5s.</summary>
 	private static TimeSpan Backoff(int failures)
 	{
-		var seconds = Math.Min(30.0, 0.5 * Math.Pow(2, Math.Min(failures - 1, 6)));
+		// Keep the cap short. The relay scales to zero, so the first connection often waits for a cold start, and a long retry gap would add to that wait.
+		var seconds = Math.Min(5.0, 0.5 * Math.Pow(2, Math.Min(failures - 1, 6)));
 		return TimeSpan.FromSeconds(seconds * (0.75 + 0.5 * Random.Shared.NextDouble()));
 	}
 

@@ -111,7 +111,7 @@ sequenceDiagram
     R-->>A: pointer frame (from=Bob)
 ```
 
-- **Reconnect.** Exponential backoff with jitter. The client resumes with `resume{room, member, token}`; the relay holds a disconnected member's slot for 30 seconds, so brief network drops are invisible.
+- **Reconnect.** Exponential backoff with jitter, capped at 5 seconds so a relay cold start (scale to zero) adds little extra wait. The client resumes with `resume{room, member, token}`; the relay holds a disconnected member's slot for 30 seconds, so brief network drops are invisible.
   If the resume fails, the client rejoins with the code it holds (or recreates its own room).
 - **Keepalive.** WebSocket pings every 20 s keep NAT and proxy mappings open and detect dead connections.
 - **Proxies.** `ClientWebSocket` uses the system proxy settings, so corporate proxies work without setup.
@@ -164,7 +164,8 @@ messages, and carries samples whenever there is no direct path. Each pair of mem
   is the nonce. A 64-packet window rejects replays. Kinds: ping, pong, pointer (the 12-byte frame; `from` comes from the authenticated header).
 - **Hole punching.** Both sides send encrypted pings to all of the other's candidates for 15 s. Replies go to the source address of the authenticated packet,
   which handles NATs that present an address neither side offered. A pong marks the pair **direct**.
-- **Keepalive and fallback.** Direct pairs ping once a second. With no pong for 3.5 s the pair reverts to the relay, probes again, and the lower id re-offers (at most every 30 s).
+- **Keepalive and fallback.** Direct pairs ping once a second. With no pong for 3.5 s the pair reverts to the relay and probes again. Whenever a pair is
+  relayed and not probing, the lower id re-offers every 30 s, so a pair whose first probe failed (or whose addresses changed) keeps retrying.
 - **Sending.** A sample for one member goes directly if that pair is direct. A broadcast goes directly to direct members and, if any member is not direct,
   also through the relay. Receivers de-duplicate by sequence number per member, so a sample that arrives by both routes is delivered once.
 - **Scope.** Pairs reset when the client enters a different room or gets a new member id, and survive a relay reconnect that resumes the same slot.

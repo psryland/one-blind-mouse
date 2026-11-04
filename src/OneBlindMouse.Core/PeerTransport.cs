@@ -37,7 +37,8 @@ public sealed record PeerOptions(IReadOnlyList<string> StunServers, bool Loopbac
 /// - Both sides send encrypted pings to every candidate of the other side. Sending from both ends at once opens a path through most home and office NATs.
 ///   A pong proves the path works in both directions, so the pair is then 'direct'. Only authenticated packets count, and replies go to the address the
 ///   authenticated packet came from, because a NAT may present an address that neither side offered.
-/// - Pings continue once a second. If pongs stop, the pair falls back to the relay and probes again for a while.
+/// - Pings continue once a second. If pongs stop, the pair falls back to the relay and probes again for a while. A relayed pair that is not probing is
+///   re-offered every 30 seconds, so a failed first attempt is retried.
 ///
 /// Packet layout: [0] magic, [1] sender member id, [2] receiver member id, [3..10] packet counter (little endian), then the encrypted payload and a 16-byte tag.
 /// The header is authenticated. The counter is the nonce, and a sliding window rejects replayed packets. The payload is a kind byte plus, for pointer samples,
@@ -337,19 +338,20 @@ public sealed class PeerTransport : IDisposable
 			var now = Environment.TickCount64;
 			foreach (var peer in m_peers.Values)
 			{
-				// A path is direct while pongs keep arriving. When it is lost, probe again, and the initiator re-offers in case addresses changed.
+				// A path is direct while pongs keep arriving. When it is lost, probe the known addresses again.
 				var direct = peer.LastPong != 0 && now - peer.LastPong < PathTimeoutMs;
 				if (direct != peer.Direct)
 				{
 					peer.Direct = direct;
 					changed = true;
 					if (!direct)
-					{
 						peer.ProbeUntil = now + ProbeWindowMs;
-						if (peer.Initiator && now - peer.LastOffer >= ReofferMs)
-							peer.OfferDue = true;
-					}
 				}
+
+				// While a pair is relayed and not probing, the initiator re-offers now and then. This retries pairs whose first probe failed (for example
+				// because one side was briefly offline) and picks up changed addresses. The answer restarts probing at both ends.
+				if (!peer.Direct && peer.Initiator && peer.Tx is not null && now >= peer.ProbeUntil && now - peer.LastOffer >= ReofferMs)
+					peer.OfferDue = true;
 
 				// Repeat unanswered offers a few times, because a signal can be lost while the relay connection is re-established
 				if (peer.RemoteKey is null && peer.OfferAttempts < MaxOfferAttempts && now - peer.LastOffer >= OfferRetryMs)
