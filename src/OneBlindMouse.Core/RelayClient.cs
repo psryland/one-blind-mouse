@@ -30,7 +30,8 @@ public enum ENotice
 /// <param name="Me">This client's member id, or 0 if not in a room.</param>
 /// <param name="Owner">The member id of the room owner, or 0 if not in a room.</param>
 /// <param name="Members">All members of the room, including this client.</param>
-public sealed record SessionSnapshot(EConnection Connection, SessionCode? Code, int Me, int Owner, IReadOnlyList<MemberInfo> Members)
+/// <param name="Direct">The members whose pointer samples travel directly rather than through the relay.</param>
+public sealed record SessionSnapshot(EConnection Connection, SessionCode? Code, int Me, int Owner, IReadOnlyList<MemberInfo> Members, IReadOnlyCollection<int> Direct)
 {
 	/// <summary>True if this client owns the room.</summary>
 	public bool IsOwner => Me != 0 && Me == Owner;
@@ -40,6 +41,12 @@ public sealed record SessionSnapshot(EConnection Connection, SessionCode? Code, 
 
 	/// <summary>This client's member info, if in a room.</summary>
 	public MemberInfo? Self => Members.FirstOrDefault(m => m.Id == Me);
+
+	/// <summary>How pointer samples travel between this client and <paramref name="member"/>.</summary>
+	public EPath PathTo(int member)
+	{
+		return Direct.Contains(member) ? EPath.Direct : EPath.Relayed;
+	}
 }
 
 /// <summary>
@@ -48,6 +55,9 @@ public sealed record SessionSnapshot(EConnection Connection, SessionCode? Code, 
 /// (if it was the owner) or falls back to its own room.
 /// All protocol state is owned by one internal loop. Public methods may be called from any thread and only queue work.
 /// Events are raised on internal threads; UI callers must marshal them.
+///
+/// With peer-to-peer enabled, pointer samples go directly to members that a <see cref="PeerTransport"/> can reach, and through the relay to the rest.
+/// While paths change, a sample may arrive by both routes, so received samples are de-duplicated by sequence number per member.
 /// </summary>
 public sealed class RelayClient : IAsyncDisposable
 {
@@ -100,20 +110,39 @@ public sealed class RelayClient : IAsyncDisposable
 	private bool m_was_owner;
 	private (double Aspect, string Label) m_target = (0, string.Empty);
 	private bool m_version_rejected;
+	private int m_epoch;
 
 	// Read from other threads
 	private volatile int m_me;
 	private volatile bool m_shared;
 	private volatile Connection? m_live;
+	private readonly PeerTransport? m_peers;
 
-	/// <summary>Create a client. Call <see cref="Start"/> to connect.</summary>
-	public RelayClient(ConnectFn connect, string name, int colour_pref = -1)
+	// The newest sequence number delivered from each member, across both routes. Guarded by m_seq_lock.
+	private readonly Lock m_seq_lock = new();
+	private readonly Dictionary<int, ushort> m_last_seq = [];
+
+	/// <summary>Create a client. Call <see cref="Start"/> to connect. With <paramref name="peers"/>, pointer samples go directly between members where possible.</summary>
+	public RelayClient(ConnectFn connect, string name, int colour_pref = -1, PeerOptions? peers = null)
 	{
 		m_connect = connect;
 		m_name = Names.SanitiseOr(name, "Anonymous");
 		m_colour_pref = Palette.IsValidSlot(colour_pref) ? colour_pref : -1;
 		m_own_code = new SessionCode(SessionCode.NewRoom(), SessionCode.NewSecret());
-		Snapshot = new SessionSnapshot(EConnection.Connecting, null, 0, 0, []);
+		Snapshot = new SessionSnapshot(EConnection.Connecting, null, 0, 0, [], []);
+
+		// Direct delivery is an optimisation, so a machine that cannot open a UDP socket just uses the relay
+		if (peers is not null)
+		{
+			try
+			{
+				m_peers = new PeerTransport(peers, SendSignal, Deliver, () => Post(() => Publish(Snapshot.Connection)));
+			}
+			catch (System.Net.Sockets.SocketException)
+			{
+				m_peers = null;
+			}
+		}
 	}
 
 	/// <summary>The latest session state. Also delivered by <see cref="SessionChanged"/>.</summary>
@@ -249,7 +278,7 @@ public sealed class RelayClient : IAsyncDisposable
 	}
 
 	/// <summary>
-	/// Send a pointer sample to another member (or 0 for everyone). The 'From' field is ignored; the relay sets it.
+	/// Send a pointer sample to another member (or 0 for everyone). The 'From' field is ignored; the receiver learns it from the relay or the direct path.
 	/// Returns false if the sample was dropped because the client is not in a shared session or the connection is congested.
 	/// </summary>
 	public bool SendPointer(PointerFrame frame)
@@ -259,7 +288,12 @@ public sealed class RelayClient : IAsyncDisposable
 		if (conn is null || m_me == 0 || !m_shared)
 			return false;
 
-		return conn.TrySendBinary(frame with { From = 0 });
+		// Directly where possible. The relay carries the sample to anyone without a direct path; members that got it directly drop the copy.
+		frame = frame with { From = 0 };
+		if (m_peers is not null && m_peers.TrySend(frame))
+			return true;
+
+		return conn.TrySendBinary(frame);
 	}
 
 	/// <summary>Leave the session and close the connection.</summary>
@@ -286,6 +320,7 @@ public sealed class RelayClient : IAsyncDisposable
 			{
 			}
 		}
+		m_peers?.Dispose();
 		m_cts.Dispose();
 	}
 
@@ -578,6 +613,12 @@ public sealed class RelayClient : IAsyncDisposable
 				SendCreate(m_own_code, by_user: false);
 				break;
 			}
+			case PeerMsg peer:
+			{
+				// Direct-path signalling from another member; ignored when peer-to-peer is off
+				m_peers?.OnSignal(peer);
+				break;
+			}
 			default:
 			{
 				// Client-to-relay message types are never valid from the relay; ignore them
@@ -609,6 +650,16 @@ public sealed class RelayClient : IAsyncDisposable
 		m_rejoin_attempts = 0;
 		m_members.Clear();
 		m_members.AddRange(joined.Members);
+
+		// Entering a room other than by resuming means member ids may now belong to different people, so direct paths and sequence history restart
+		if (!joined.Resumed)
+		{
+			++m_epoch;
+			lock (m_seq_lock)
+			{
+				m_last_seq.Clear();
+			}
+		}
 
 		// Tell the room about our pointer target
 		if (m_target.Aspect != 0 || m_target.Label.Length != 0)
@@ -786,7 +837,20 @@ public sealed class RelayClient : IAsyncDisposable
 
 		var members = m_members.OrderBy(m => m.Id).ToArray();
 		m_shared = m_me != 0 && members.Length > 1;
-		Snapshot = new SessionSnapshot(connection, m_code, m_me, m_owner, members);
+
+		// Keep direct paths in step with the member list. They are kept while the relay connection is down, so a quick resume needs no new handshake.
+		var ids = members.Select(m => m.Id).ToHashSet();
+		if (m_peers is not null && m_me != 0)
+			m_peers.Update(m_epoch, m_me, ids);
+
+		// Forget the sequence history of members who left, because their ids can be reused
+		lock (m_seq_lock)
+		{
+			foreach (var id in m_last_seq.Keys.Where(id => !ids.Contains(id)).ToList())
+				m_last_seq.Remove(id);
+		}
+
+		Snapshot = new SessionSnapshot(connection, m_code, m_me, m_owner, members, m_peers?.DirectMembers() ?? []);
 		SessionChanged?.Invoke(Snapshot);
 	}
 
@@ -797,7 +861,31 @@ public sealed class RelayClient : IAsyncDisposable
 		if (gen != m_gen || frame.From == 0 || frame.From == m_me)
 			return;
 
-		PointerReceived?.Invoke(frame);
+		Deliver(frame);
+	}
+
+	/// <summary>Raise <see cref="PointerReceived"/> for a sample from either route, unless a newer sample from that member was already delivered.</summary>
+	private void Deliver(PointerFrame frame)
+	{
+		// Raised under the lock so samples from the two routes reach the handler in sequence order
+		lock (m_seq_lock)
+		{
+			if (m_last_seq.TryGetValue(frame.From, out var last) && !PointerFrame.IsNewer(frame.Seq, last))
+				return;
+
+			m_last_seq[frame.From] = frame.Seq;
+			PointerReceived?.Invoke(frame);
+		}
+	}
+
+	/// <summary>Forward a direct-path signal to the relay. Signals are dropped while not in a room; the transport repeats unanswered offers.</summary>
+	private void SendSignal(PeerMsg msg)
+	{
+		Post(() =>
+		{
+			if (m_conn is not null && m_me != 0)
+				m_conn.SendText(msg);
+		});
 	}
 
 	/// <summary>One WebSocket connection with its own send and receive loops.</summary>

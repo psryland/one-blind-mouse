@@ -316,6 +316,7 @@ internal sealed class AgentCommands
 				["is_me"] = m.Id == snap.Me,
 				["is_owner"] = m.Id == snap.Owner,
 				["sharing"] = m.Label,
+				["path"] = m.Id == snap.Me ? null : snap.PathTo(m.Id).ToString().ToLowerInvariant(),
 			});
 		}
 		return new JsonObject
