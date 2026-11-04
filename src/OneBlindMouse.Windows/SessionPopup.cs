@@ -12,7 +12,7 @@ internal sealed unsafe class SessionPopup : NativeWindow
 {
 	// Control ids
 	private const int IdCode = 100, IdCopy = 101, IdCopyLink = 102, IdJoinText = 103, IdJoin = 104, IdMembers = 105;
-	private const int IdName = 106, IdRename = 107, IdLeave = 108, IdNewCode = 109, IdHint = 110, IdTitle = 111, IdCodeLabel = 112, IdJoinLabel = 113, IdNameLabel = 114, IdClose = 115;
+	private const int IdName = 106, IdRename = 107, IdLeave = 108, IdNewCode = 109, IdHint = 110, IdTitle = 111, IdCodeLabel = 112, IdJoinLabel = 113, IdNameLabel = 114, IdMinimise = 115;
 
 	// Layout at 96 DPI
 	private const int Width96 = 340, Pad96 = 12, Row96 = 26, Gap96 = 8, Button96 = 80;
@@ -48,7 +48,7 @@ internal sealed unsafe class SessionPopup : NativeWindow
 		Add("BUTTON", "Leave session", User32.BS_PUSHBUTTON | User32.WS_TABSTOP, IdLeave);
 		Add("BUTTON", "New code", User32.BS_PUSHBUTTON | User32.WS_TABSTOP, IdNewCode);
 		Add("STATIC", "", User32.SS_LEFT | User32.SS_NOPREFIX, IdHint);
-		Add("BUTTON", "Close", User32.BS_PUSHBUTTON | User32.WS_TABSTOP, IdClose);
+		Add("BUTTON", "Minimise to tray", User32.BS_PUSHBUTTON | User32.WS_TABSTOP, IdMinimise);
 		User32.SendMessageW(Ctl(IdName), User32.EM_LIMITTEXT, Protocol.MaxNameLength, 0);
 		User32.SendMessageW(Ctl(IdJoinText), User32.EM_LIMITTEXT, 256, 0);
 		fixed (char* cue = "Paste a code or link")
@@ -205,7 +205,7 @@ internal sealed unsafe class SessionPopup : NativeWindow
 				break;
 			}
 			case User32.IDCANCEL:
-			case IdClose:
+			case IdMinimise:
 			{
 				Hide();
 				break;
@@ -297,7 +297,7 @@ internal sealed unsafe class SessionPopup : NativeWindow
 		y += row + gap;
 		Place(IdHint, pad, y, inner, line * 3);
 		y += line * 3 + gap;
-		Place(IdClose, width - pad - button, y, button, row);
+		Place(IdMinimise, width - pad - 2 * button - gap, y, 2 * button + gap, row);
 		y += row + pad;
 
 		// Add the border thickness so the client area is the laid-out size
