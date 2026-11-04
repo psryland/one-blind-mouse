@@ -1,0 +1,49 @@
+# Builds the relay container image and publishes it to GitHub Container Registry as ghcr.io/psryland/one-blind-mouse-relay.
+# infra/deploy.ps1 deploys whichever image the 'latest' tag names, pinned by digest.
+# The package must be public so Azure Container Apps can pull it without credentials (set once in the package settings on GitHub).
+name: Relay image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/OneBlindMouse.Core/**'
+      - 'src/OneBlindMouse.Relay/**'
+      - 'Directory.Build.props'
+      - '.dockerignore'
+      - '.github/workflows/relay-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag with the commit for traceability, and 'latest' for deploy.ps1. The source label links the package to this repository.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/psryland/one-blind-mouse-relay
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest
+
+      # Build from the repository root so the shared Core library is in the build context
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/OneBlindMouse.Relay/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

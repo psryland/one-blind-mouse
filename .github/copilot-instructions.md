@@ -8,7 +8,7 @@ Instances connect through a cloud WebSocket relay using a short shared code. It 
 ## Architecture
 
 - `src/OneBlindMouse.Core/` — Platform-neutral protocol, `PointerFrame` (12-byte binary), `SessionCode`, palette, name sanitising, `PointerSmoother`, `RelayClient`
-- `src/OneBlindMouse.Relay/` — ASP.NET Core WebSocket relay on Azure Container Apps (in-memory rooms, single replica)
+- `src/OneBlindMouse.Relay/` — ASP.NET Core WebSocket relay on Azure Container Apps (in-memory rooms, at most one replica, scales to zero; image on GHCR)
 - `src/OneBlindMouse.Windows/` — NativeAOT tray app: Win32 P/Invoke + GDI+ (no UI framework), overlay sprite windows, input hooks, local named-pipe API and MCP server
 - `tests/OneBlindMouse.Tests/` — xUnit tests, including end-to-end tests against an in-process relay
 - `infra/` — Bicep and `deploy.ps1`

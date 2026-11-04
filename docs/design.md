@@ -76,7 +76,8 @@ flowchart LR
 
 ### 4.1 Why a relay
 The only transport that works on every network (corporate proxies, hotel Wi-Fi, symmetric NAT) is **outbound TLS on port 443**, so every client keeps one WebSocket to a small relay.
-Pointer traffic is tiny (12-byte frames at up to 30 Hz), so the relay is billed by compute, not messages. Managed pub/sub services with per-message pricing were rejected for cost.
+Pointer traffic is tiny (12-byte frames at up to 30 Hz), so the relay is billed by compute, not messages, and scales to zero when nobody is connected.
+Managed pub/sub services with per-message pricing were rejected for cost.
 The relay URL is compiled into the app; users never see or configure it. A direct peer-to-peer upgrade is future work (§9).
 
 ### 4.2 Codes
@@ -225,8 +226,9 @@ Tools: `get_session` (members, what each shares and its aspect ratio), `point_at
 - macOS and Linux clients (the Core library and protocol are platform-neutral), a browser sender, code signing, optional join approval.
 
 ## 10. Deployment (one-time)
-`./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse [-Location australiaeast] [-CustomDomain one-blind-mouse.rylogic.co.nz]` creates a container registry, Log Analytics, a Container Apps environment and a Static Web App,
-builds the relay image in the registry (`az acr build`, no local Docker), deploys the relay with one replica, uploads `web/`, and prints the relay URL and site address.
+`./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse [-Location australiaeast] [-CustomDomain one-blind-mouse.rylogic.co.nz]` creates Log Analytics, a Container Apps environment and a Static Web App,
+deploys the relay from the public `ghcr.io/psryland/one-blind-mouse-relay:latest` image (pinned by digest; built by the `Relay image` GitHub workflow on changes to the relay or Core),
+uploads `web/`, and prints the relay URL and site address.
 With `-CustomDomain`, it also adds that domain to the Static Web App, which issues a free certificate. The domain needs a CNAME record pointing at the site's default
 host name (`<name>.azurestaticapps.net`) first. The live site is https://one-blind-mouse.rylogic.co.nz; links on the default host name keep working.
 Compile those into `AppConfig` (`DefaultRelayUrl`, `DefaultWebUrl`) and the site's download link (`web/js/config.js`), then publish the app:
@@ -235,4 +237,5 @@ Compile those into `AppConfig` (`DefaultRelayUrl`, `DefaultWebUrl`) and the site
 dotnet publish src/OneBlindMouse.Windows -c Release -r win-x64
 ```
 
-The relay keeps rooms in memory, so it must run as a single replica; restarting it drops sessions, and clients reconnect and recreate their rooms automatically.
+The relay keeps rooms in memory, so it runs at most one replica; restarting it drops sessions, and clients reconnect and recreate their rooms automatically.
+It scales to zero when no client is connected, so it costs nothing while unused. The first connection after that waits a few seconds while a replica starts.
