@@ -18,6 +18,21 @@ internal static class AppConfig
 	/// <summary>The landing page that hosts download and join links.</summary>
 	private const string DefaultWebUrl = "https://one-blind-mouse.rylogic.co.nz";
 
+	/// <summary>The GitHub API address that describes the latest release.</summary>
+	public const string LatestReleaseApi = "https://api.github.com/repos/psryland/one-blind-mouse/releases/latest";
+
+	/// <summary>Release downloads must start with this address.</summary>
+	public const string ReleaseDownloadPrefix = "https://github.com/psryland/one-blind-mouse/releases/download/";
+
+	/// <summary>The web page for the latest release, for manual downloads.</summary>
+	public const string ReleasesPage = "https://github.com/psryland/one-blind-mouse/releases/latest";
+
+	/// <summary>The code-signing certificate name that release builds must be signed with.</summary>
+	public const string Signer = "Rylogic Limited";
+
+	/// <summary>The running app's version (MAJOR.MINOR.PATCH).</summary>
+	public static Version Version { get; } = Core.Releases.Normalise(typeof(AppConfig).Assembly.GetName().Version ?? new Version(0, 0, 0));
+
 	/// <summary>The relay endpoint. Debug builds may override it with OBM_RELAY_URL for local testing.</summary>
 	public static Uri RelayUri { get; } = new(DebugOverride("OBM_RELAY_URL") ?? DefaultRelayUrl);
 

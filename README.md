@@ -23,6 +23,9 @@ The pointer you send is mapped onto the meeting window under your cursor, or ont
 
 Optional: **Open join links with this app** registers `obm://` links for your user, so a shared join link opens the app directly.
 
+Updates: the app checks for a new release at startup and daily, and shows a notification when there is one. **Update to version X** (or **Check for updates…**)
+in the tray menu downloads it, checks it is signed by Rylogic Limited, replaces the exe in place and restarts the app.
+
 ## AI agents
 
 `OneBlindMouse.exe mcp` is an MCP server (stdio) that glides an agent pointer, prompts clicks, and draws circles, highlights and arrows on the local screen:

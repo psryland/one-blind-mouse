@@ -185,7 +185,7 @@ messages, and carries samples whenever there is no direct path. Each pair of mem
 
 ## 6. Windows app
 
-- **NativeAOT** single exe (about 6 MB), no runtime required. Pure P/Invoke (user32, gdi32, GDI+, shell32, dwmapi) and built-in .NET JSON/WebSockets; no NuGet packages.
+- **NativeAOT** single exe (about 6 MB), no runtime required. Pure P/Invoke (user32, gdi32, GDI+, shell32, dwmapi, wintrust, crypt32) and built-in .NET JSON/WebSockets; no NuGet packages.
 - **Threads.** One UI thread runs a Win32 message loop (`UiDispatcher`), which also owns timers and receives work posted from other threads.
   `RelayClient` runs on the thread pool; its events are marshalled to the UI thread.
 - **Overlay.** Each pointer, trail, effect and annotation is a small layered, transparent, topmost, no-activate sprite window drawn with GDI+ and `UpdateLayeredWindow`.
@@ -195,10 +195,17 @@ messages, and carries samples whenever there is no direct path. Each pair of mem
   Hooks run with no blocking work, and the cursor clip is released on stop, crash, Esc or workstation lock.
 - **Tray icon** in the user's palette colour (grey when offline). Left click toggles the session popup; right click opens the menu:
   show session, point on ▸, what I'm sharing ▸ (monitors / pick a window), pointing frames ▸, hold key ▸, pointer size ▸, show pointers in my screen share,
-  open join links with this app, copy code, copy join link, new code, leave session, remove ▸ (owner), quit.
+  open join links with this app, copy code, copy join link, new code, leave session, remove ▸ (owner), check for updates… (or update to version X…), quit.
 - **Session popup**, centred on the primary monitor: code, copy buttons, join box, member list, name, leave, new code, a usage hint and a "Minimise to tray" button. Clicking elsewhere or pressing Esc also hides it; the app keeps running in the tray.
 - **Single instance** per user, logon session and profile (named mutex). A second launch forwards its join code (or "activate") to the running instance over the local pipe and exits.
 - **Settings** (`%APPDATA%\OneBlindMouse\settings.json`): name, colour preference, hold key, shared monitor, pointer size, show in capture. Crash logs go to the same directory.
+- **Updates.** The app reads the GitHub `releases/latest` API at startup and every 24 hours. A newer `vMAJOR.MINOR.PATCH` tag is announced once per version
+  with a tray notification, and the menu then offers "Update to version X…". Updating asks first when others are connected (the restart leaves the session).
+  The release's `OneBlindMouse.exe` is downloaded next to the running exe; only addresses under the repository's release download path are accepted.
+  The download must pass `WinVerifyTrust` (Authenticode, timestamped) and its signer must be "Rylogic Limited"; otherwise it is deleted.
+  The running exe is then renamed to `OneBlindMouse.exe.<pid>.old` (Windows allows renaming a running exe), the download takes its name, and the app quits
+  and restarts with its profile and title tag once the single-instance lock is free. Old copies are deleted at the next start; MCP server processes still
+  running from them keep the old version until they restart. If anything fails, the current exe is kept and the release page is offered instead.
 - **Testing options.** `--profile NAME` isolates settings, mutex and pipe so several instances run side by side; `--title-tag TEXT` prefixes window titles.
   Debug builds accept `OBM_RELAY_URL` and `OBM_WEB_URL` environment overrides; release builds ignore them.
 
@@ -245,11 +252,12 @@ Tools: `get_session` (members, what each shares and its aspect ratio), `point_at
   list arbitrary candidate addresses and so direct a small number of encrypted probes at them (at most 8 addresses, about 5 packets per second each, for 15 s).
 - All network input is validated on both sides. The relay URL is compiled in and can't be changed by a link or argument in release builds. Links only ever carry a code.
 - The local pipe is restricted to the current user; the `obm://` handler is opt-in and HKCU only.
+- Updates only come from the compiled-in GitHub repository and are installed only with a valid Authenticode signature from Rylogic Limited (§6).
 
 ## 9. Future work
 - **End-to-end encryption** with a PAKE keyed by the code secret, if the relay should become untrusted (the current verifier would then be replaced, since it allows offline guessing by the relay).
   The same key could then authenticate direct-path signalling.
-- macOS and Linux clients (the Core library and protocol are platform-neutral), a browser sender, code signing, optional join approval.
+- macOS and Linux clients (the Core library and protocol are platform-neutral), a browser sender, optional join approval.
 
 ## 10. Deployment (one-time)
 `./infra/deploy.ps1 -Subscription <name or id> -ResourceGroup rg-one-blind-mouse [-Location australiaeast] [-CustomDomain one-blind-mouse.rylogic.co.nz]` creates Log Analytics, a Container Apps environment and a Static Web App,

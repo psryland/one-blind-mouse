@@ -11,6 +11,9 @@ internal sealed class App : IDisposable
 	/// <summary>Pointer size choices in the tray menu (percent).</summary>
 	private static readonly (int Size, string Name)[] PointerSizes = [(60, "Small"), (PointerFrame.DefaultSize, "Normal"), (150, "Large"), (220, "Huge")];
 
+	/// <summary>How often to look for a new release while running (24 hours).</summary>
+	private const uint UpdateCheckIntervalMs = 24 * 60 * 60 * 1000;
+
 	private readonly Settings m_settings;
 	private readonly nint m_gdip;
 	private readonly UiDispatcher m_ui;
@@ -23,6 +26,13 @@ internal sealed class App : IDisposable
 	private readonly LocalApi m_api;
 	private SessionSnapshot m_snap;
 	private nuint m_housekeeping;
+	private nuint m_update_timer;
+	private Release? m_update;
+	private Version? m_update_announced;
+	private bool m_update_busy;
+
+	/// <summary>True when an update was installed and the app should start again after closing.</summary>
+	public bool RestartRequested { get; private set; }
 
 	/// <summary>Create the app on the UI thread and start connecting. 'join' is a session to join once connected.</summary>
 	public App(SessionCode? join)
@@ -73,6 +83,10 @@ internal sealed class App : IDisposable
 		m_housekeeping = m_ui.StartTimer(1000, Housekeeping);
 		Housekeeping();
 		m_popup.Show();
+
+		// Look for updates quietly now and daily; the user is only told when there is one
+		m_update_timer = m_ui.StartTimer(UpdateCheckIntervalMs, () => CheckForUpdates(quiet: true));
+		CheckForUpdates(quiet: true);
 	}
 
 	/// <summary>Run the message loop until the user quits.</summary>
@@ -87,6 +101,7 @@ internal sealed class App : IDisposable
 	{
 		// Release the mouse and hooks first, so nothing is left captured if a later step hangs
 		m_ui.StopTimer(ref m_housekeeping);
+		m_ui.StopTimer(ref m_update_timer);
 		m_transmitter.Dispose();
 		m_settings.Save();
 
@@ -277,6 +292,11 @@ internal sealed class App : IDisposable
 		}
 		menu.Sub("Remove", remove);
 		menu.Separator();
+		if (m_update is { } update)
+			menu.Item($"Update to version {update.Version}…", () => InstallUpdate(always_confirm: false), enabled: !m_update_busy);
+		else
+			menu.Item("Check for updates…", () => CheckForUpdates(quiet: false), enabled: !m_update_busy);
+
 		menu.Item("Quit", UiDispatcher.Quit);
 		m_tray.ShowMenu(menu, pt);
 	}
@@ -319,5 +339,114 @@ internal sealed class App : IDisposable
 		{
 			m_tray.ShowBalloon(AppConfig.ProductName, $"Could not change the link handler: {ex.Message}", ENotice.Error);
 		}
+	}
+
+	/// <summary>Look for a newer release in the background. A quiet check only speaks up when there is a new version, and only once per version.</summary>
+	private void CheckForUpdates(bool quiet)
+	{
+		// One update operation at a time; the result comes back to the UI thread
+		if (m_update_busy)
+			return;
+
+		m_update_busy = true;
+		_ = Task.Run(async () =>
+		{
+			// Failures are expected (e.g. offline) and only reported when the user asked
+			try
+			{
+				var release = await Updater.CheckAsync().ConfigureAwait(false);
+				m_ui.Post(() => OnUpdateChecked(release, quiet));
+			}
+			catch (UpdateError ex)
+			{
+				m_ui.Post(() =>
+				{
+					// The menu item is usable again whatever happened
+					m_update_busy = false;
+					if (!quiet)
+						m_tray.ShowBalloon(AppConfig.ProductName, ex.Message, ENotice.Warning);
+				});
+			}
+		});
+	}
+
+	/// <summary>Handle the result of an update check. 'release' is null when this version is the latest.</summary>
+	private void OnUpdateChecked(Release? release, bool quiet)
+	{
+		// The menu offers the update from now on
+		m_update_busy = false;
+		m_update = release;
+		if (release is null)
+		{
+			if (!quiet)
+				m_tray.ShowBalloon(AppConfig.ProductName, $"You have the latest version ({AppConfig.Version}).", ENotice.Info);
+
+			return;
+		}
+
+		// A user who asked is offered the update at once; otherwise a reminder is shown once per version
+		if (!quiet)
+		{
+			InstallUpdate(always_confirm: true);
+		}
+		else if (m_update_announced != release.Version)
+		{
+			m_update_announced = release.Version;
+			m_tray.ShowBalloon(AppConfig.ProductName, $"Version {release.Version} is available. Choose 'Update to version {release.Version}' from the tray menu to install it.", ENotice.Info);
+		}
+	}
+
+	/// <summary>
+	/// Download and install the available update, then restart. Confirmation is asked when 'always_confirm' is set,
+	/// or when others are connected, because the restart leaves the session.
+	/// </summary>
+	private void InstallUpdate(bool always_confirm)
+	{
+		// Busy covers the confirmation too, because the tray menu still works while the message box is open
+		if (m_update_busy || m_update is not { } release)
+			return;
+
+		m_update_busy = true;
+		if (always_confirm || m_snap.IsShared)
+		{
+			var leaving = m_snap.IsShared ? $"\n\n{AppConfig.ProductName} will restart, which leaves the current session." : string.Empty;
+			var text = $"Update {AppConfig.ProductName} from version {AppConfig.Version} to {release.Version}?{leaving}";
+			if (User32.MessageBoxW(0, text, AppConfig.Title(AppConfig.ProductName), User32.MB_YESNO | User32.MB_ICONQUESTION) != User32.IDYES)
+			{
+				m_update_busy = false;
+				return;
+			}
+		}
+
+		// The download runs in the background; success restarts the app from the message loop
+		m_tray.ShowBalloon(AppConfig.ProductName, $"Downloading version {release.Version}…", ENotice.Info);
+		_ = Task.Run(async () =>
+		{
+			// Installation failures leave the current version in place
+			try
+			{
+				await Updater.InstallAsync(release).ConfigureAwait(false);
+				m_ui.Post(() =>
+				{
+					// Program restarts the app once everything has closed
+					RestartRequested = true;
+					UiDispatcher.Quit();
+				});
+			}
+			catch (UpdateError ex)
+			{
+				m_ui.Post(() => OnUpdateFailed(ex));
+			}
+		});
+	}
+
+	/// <summary>Report a failed install and offer a manual download instead.</summary>
+	private void OnUpdateFailed(UpdateError ex)
+	{
+		// The update can be retried from the menu
+		m_update_busy = false;
+		var text = $"{ex.Message}\n\nOpen the download page to update manually?";
+		if (User32.MessageBoxW(0, text, AppConfig.Title(AppConfig.ProductName), User32.MB_YESNO | User32.MB_ICONWARNING) == User32.IDYES)
+			Updater.OpenReleasesPage();
 	}
 }

@@ -229,7 +229,8 @@ internal static unsafe partial class User32
 	public const uint SPI_GETWORKAREA = 0x30;
 	public const uint WDA_NONE = 0, WDA_EXCLUDEFROMCAPTURE = 0x11;
 	public const int VK_ESCAPE = 0x1B, VK_RETURN = 0x0D, VK_RCONTROL = 0xA3, VK_RSHIFT = 0xA1, VK_RMENU = 0xA5, VK_APPS = 0x5D, VK_SCROLL = 0x91, VK_PAUSE = 0x13;
-	public const uint MB_OK = 0, MB_ICONWARNING = 0x30, MB_ICONERROR = 0x10;
+	public const uint MB_OK = 0, MB_YESNO = 4, MB_ICONERROR = 0x10, MB_ICONQUESTION = 0x20, MB_ICONWARNING = 0x30;
+	public const int IDYES = 6;
 
 	[LibraryImport("user32.dll", SetLastError = true)]
 	public static partial ushort RegisterClassExW(WNDCLASSEXW* wc);
@@ -631,4 +632,75 @@ internal static partial class WtsApi32
 	[LibraryImport("wtsapi32.dll")]
 	[return: MarshalAs(UnmanagedType.Bool)]
 	public static partial bool WTSUnRegisterSessionNotification(nint hwnd);
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct WINTRUST_FILE_INFO
+{
+	public uint cbStruct;
+	public nint pcwszFilePath;
+	public nint hFile;
+	public nint pgKnownSubject;
+}
+
+/// <summary>The leading fields of CRYPT_PROVIDER_SGNR; only ever read through a pointer from wintrust.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct CRYPT_PROVIDER_SGNR
+{
+	public uint cbStruct;
+	public uint sftVerifyAsOfLow;
+	public uint sftVerifyAsOfHigh;
+	public uint csCertChain;
+	public CRYPT_PROVIDER_CERT* pasCertChain;
+}
+
+/// <summary>The leading fields of CRYPT_PROVIDER_CERT; only ever read through a pointer from wintrust.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct CRYPT_PROVIDER_CERT
+{
+	public uint cbStruct;
+	public nint pCert;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct WINTRUST_DATA
+{
+	public uint cbStruct;
+	public nint pPolicyCallbackData;
+	public nint pSIPClientData;
+	public uint dwUIChoice;
+	public uint fdwRevocationChecks;
+	public uint dwUnionChoice;
+	public nint pFile;
+	public uint dwStateAction;
+	public nint hWVTStateData;
+	public nint pwszURLReference;
+	public uint dwProvFlags;
+	public uint dwUIContext;
+	public nint pSignatureSettings;
+}
+
+internal static unsafe partial class WinTrust
+{
+	public const uint WTD_UI_NONE = 2, WTD_REVOKE_NONE = 0, WTD_CHOICE_FILE = 1, WTD_STATEACTION_VERIFY = 1, WTD_STATEACTION_CLOSE = 2;
+
+	/// <summary>The standard Authenticode policy.</summary>
+	public static readonly Guid WINTRUST_ACTION_GENERIC_VERIFY_V2 = new("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
+
+	[LibraryImport("wintrust.dll")]
+	public static partial int WinVerifyTrust(nint hwnd, Guid* action, WINTRUST_DATA* data);
+
+	[LibraryImport("wintrust.dll")]
+	public static partial nint WTHelperProvDataFromStateData(nint state);
+
+	[LibraryImport("wintrust.dll")]
+	public static partial CRYPT_PROVIDER_SGNR* WTHelperGetProvSignerFromChain(nint prov_data, uint signer, [MarshalAs(UnmanagedType.Bool)] bool counter_signer, uint counter_signer_index);
+}
+
+internal static unsafe partial class Crypt32
+{
+	public const uint CERT_NAME_SIMPLE_DISPLAY_TYPE = 4;
+
+	[LibraryImport("crypt32.dll")]
+	public static partial uint CertGetNameStringW(nint cert, uint type, uint flags, nint type_para, char* name, uint name_len);
 }

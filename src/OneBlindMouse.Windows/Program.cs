@@ -58,14 +58,45 @@ internal static class Program
 		}
 
 		// Hand over to the running instance if there is one
-		using var mutex = new Mutex(true, $@"Local\{AppConfig.InstanceName}", out var created);
-		if (!created)
-			return Forward(join);
+		bool restart;
+		using (var mutex = new Mutex(true, $@"Local\{AppConfig.InstanceName}", out var created))
+		{
+			if (!created)
+				return Forward(join);
 
-		// Run the tray app
-		using var app = new App(join);
-		app.Run();
+			// Run the tray app, after tidying up any copy replaced by an earlier update
+			Updater.DeleteOldVersions();
+			using var app = new App(join);
+			app.Run();
+			restart = app.RestartRequested;
+		}
+
+		// An installed update starts a fresh instance once this one has let go of the single-instance lock
+		if (restart)
+			Relaunch();
+
 		return 0;
+	}
+
+	/// <summary>Start the updated app with this instance's profile and title tag. A join code isn't passed on because the update starts a fresh session.</summary>
+	private static void Relaunch()
+	{
+		// Only the options that identify this instance are kept
+		var args = new List<string>();
+		if (AppConfig.Profile.Length != 0)
+			args.AddRange(["--profile", AppConfig.Profile]);
+
+		if (AppConfig.TitleTag.Length != 0)
+			args.AddRange(["--title-tag", AppConfig.TitleTag]);
+
+		try
+		{
+			Updater.Relaunch(args);
+		}
+		catch (System.ComponentModel.Win32Exception ex)
+		{
+			User32.MessageBoxW(0, $"{AppConfig.ProductName} was updated but could not restart. Please start it again.\n\n{ex.Message}", AppConfig.Title(AppConfig.ProductName), User32.MB_OK | User32.MB_ICONWARNING);
+		}
 	}
 
 	/// <summary>Send a join code (or just "show yourself") to the running instance.</summary>
