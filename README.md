@@ -25,6 +25,7 @@ Optional: **Open join links with this app** registers `obm://` links for your us
 
 Updates: the app checks for a new release at startup and daily, and shows a notification when there is one. **Update to version X** (or **Check for updates…**)
 in the tray menu downloads it, checks it is signed by Rylogic Limited, replaces the exe in place and restarts the app.
+The tray menu also shows the installed version and has a **Download latest release…** link to GitHub for manual downloads.
 
 ## AI agents
 

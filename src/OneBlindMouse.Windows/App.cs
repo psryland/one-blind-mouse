@@ -292,11 +292,15 @@ internal sealed class App : IDisposable
 		}
 		menu.Sub("Remove", remove);
 		menu.Separator();
+
+		// Version and manual downloads are available even if the update check fails
+		menu.Label($"Installed version: {AppConfig.Version}");
 		if (m_update is { } update)
 			menu.Item($"Update to version {update.Version}…", () => InstallUpdate(always_confirm: false), enabled: !m_update_busy);
 		else
 			menu.Item("Check for updates…", () => CheckForUpdates(quiet: false), enabled: !m_update_busy);
 
+		menu.Item("Download latest release…", OpenReleasesPage);
 		menu.Item("Quit", UiDispatcher.Quit);
 		m_tray.ShowMenu(menu, pt);
 	}
@@ -447,6 +451,21 @@ internal sealed class App : IDisposable
 		m_update_busy = false;
 		var text = $"{ex.Message}\n\nOpen the download page to update manually?";
 		if (User32.MessageBoxW(0, text, AppConfig.Title(AppConfig.ProductName), User32.MB_YESNO | User32.MB_ICONWARNING) == User32.IDYES)
+			OpenReleasesPage();
+	}
+
+	/// <summary>Open GitHub Releases for a manual download, or show the address if it cannot be opened.</summary>
+	private void OpenReleasesPage()
+	{
+		// Keep the address visible if Windows cannot open a browser
+		try
+		{
 			Updater.OpenReleasesPage();
+		}
+		catch (UpdateError ex)
+		{
+			// A browser failure must not make manual downloads unreachable
+			User32.MessageBoxW(0, $"{ex.Message}\n\n{AppConfig.ReleasesPage}", AppConfig.Title(AppConfig.ProductName), User32.MB_OK | User32.MB_ICONWARNING);
+		}
 	}
 }

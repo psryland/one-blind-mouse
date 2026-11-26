@@ -98,16 +98,19 @@ internal static class Updater
 		Process.Start(psi)?.Dispose();
 	}
 
-	/// <summary>Open the latest release's web page, for a manual download.</summary>
+	/// <summary>Open the latest release's web page for a manual download. Throws UpdateError if it cannot be opened.</summary>
 	public static void OpenReleasesPage()
 	{
-		// A missing browser is not worth an error; the user can find the page themselves
+		// Let Windows open the page with the default browser
 		try
 		{
+			// The shell may hand the URL to a browser that is already running
 			Process.Start(new ProcessStartInfo(AppConfig.ReleasesPage) { UseShellExecute = true })?.Dispose();
 		}
-		catch (Win32Exception)
+		catch (Win32Exception ex)
 		{
+			// Let the caller show the address if the shell cannot open it
+			throw new UpdateError($"Could not open GitHub Releases. {ex.Message}", ex);
 		}
 	}
 

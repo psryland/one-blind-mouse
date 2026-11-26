@@ -685,7 +685,7 @@ public sealed class RelayClient : IAsyncDisposable
 		if (error.Code == ErrorCodes.Version)
 		{
 			m_version_rejected = true;
-			Notify(ENotice.Error, "This version of One-Blind-Mouse is too old. Please download the latest version.");
+			Notify(ENotice.Error, "The session relay no longer accepts this version of One-Blind-Mouse. Please download the latest version.");
 			m_conn?.Abort();
 			return;
 		}

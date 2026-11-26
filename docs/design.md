@@ -195,7 +195,8 @@ messages, and carries samples whenever there is no direct path. Each pair of mem
   Hooks run with no blocking work, and the cursor clip is released on stop, crash, Esc or workstation lock.
 - **Tray icon** in the user's palette colour (grey when offline). Left click toggles the session popup; right click opens the menu:
   show session, point on ▸, what I'm sharing ▸ (monitors / pick a window), pointing frames ▸, hold key ▸, pointer size ▸, show pointers in my screen share,
-  open join links with this app, copy code, copy join link, new code, leave session, remove ▸ (owner), check for updates… (or update to version X…), quit.
+  open join links with this app, copy code, copy join link, new code, leave session, remove ▸ (owner), installed version, check for updates… (or update to version X…),
+  download latest release… (GitHub), quit.
 - **Session popup**, centred on the primary monitor: code, copy buttons, join box, member list, name, leave, new code, a usage hint and a "Minimise to tray" button. Clicking elsewhere or pressing Esc also hides it; the app keeps running in the tray.
 - **Single instance** per user, logon session and profile (named mutex). A second launch forwards its join code (or "activate") to the running instance over the local pipe and exits.
 - **Settings** (`%APPDATA%\OneBlindMouse\settings.json`): name, colour preference, hold key, shared monitor, pointer size, show in capture. Crash logs go to the same directory.
